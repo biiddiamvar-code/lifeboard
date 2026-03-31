@@ -92,8 +92,41 @@ const SURPRISE_POOL = {
 const TOTAL = 120;
 const SPECIAL = { 10:"surprise", 20:"mini-game", 35:"surprise", 50:"mini-game", 65:"surprise", 80:"surprise", 95:"mini-game" };
 const LANDMARKS = ["🏺","🕌","🌊","🎭","🐪","🏔️","🌙","⭐","🌿","🎯","🌺","🔮","🦅","🎶","🌸"];
+const BADGE_SQUARES = [15,30,45,60,75,90];
+const THEME_BADGES = {
+  anatolia:[
+    {emoji:"🏺",name:"Çömlekçi",desc:"Çanak çömlek ustası oldun!"},
+    {emoji:"🕌",name:"Tarih Yolcusu",desc:"Tarihi eserleri kesfettin!"},
+    {emoji:"🐪",name:"Kervan Üyesi",desc:"Anadolu yollarını astın!"},
+    {emoji:"🌙",name:"Gece Yolcusu",desc:"Karanlıkta bile yolunu buldun!"},
+    {emoji:"🦅",name:"Kartal",desc:"Zirveye ulastın!"},
+    {emoji:"🔮",name:"Büyücü",desc:"Gizemleri çözüyorsun!"},
+  ],
+  galaxy:[
+    {emoji:"⭐",name:"Yıldız Toplayıcı",desc:"Galakside bir yıldız kazandın!"},
+    {emoji:"🚀",name:"Roket Pilotu",desc:"Uzaya firlatıldın!"},
+    {emoji:"🌍",name:"Gezegen Kaşifi",desc:"Yeni bir gezegen kesfettin!"},
+    {emoji:"☄️",name:"Meteor Avcısı",desc:"Meteor kusagından geçtin!"},
+    {emoji:"🛸",name:"UFO Kaptanı",desc:"Uzay gemisini kullandın!"},
+    {emoji:"🌌",name:"Galaksi Haritacısı",desc:"Sonsuz evreni haritaladın!"},
+  ],
+  nature:[
+    {emoji:"🌱",name:"Tohum Ekici",desc:"Doga yolculugu basladı!"},
+    {emoji:"🦋",name:"Kelebek",desc:"Dönüsum tamamlandı!"},
+    {emoji:"🌳",name:"Agaç Bekçisi",desc:"Bir agaç büyüttün!"},
+    {emoji:"💧",name:"Su Koruyucusu",desc:"Nehirleri temizledin!"},
+    {emoji:"🦅",name:"Orman Kartalı",desc:"Dogayı yukarıdan izledin!"},
+    {emoji:"🌈",name:"Gökkusagı",desc:"Dogayı kurtardın!"},
+  ],
+};
 
-// ── YARDIMCI FONKSİYONLAR ─────────────────────────────────────────────────────
+const DEFAULT_GAME_STATE = {
+  positions: {},   // { parent:0, child_0:0, child_1:0, ... }  -  herkes kendi konumunda
+  tasks: DEFAULT_TASKS,
+  memberRights: {},
+  memberDone: {},
+  earnedBadges: {},  // { parent:["🏺"], child_0:["⭐"] }
+};
 function makeCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let c = "";
@@ -135,7 +168,112 @@ function BackBtn({ onBack }) {
   return <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", alignSelf:"flex-start", marginBottom:16 }}>←</button>;
 }
 
-// ── ONBOARDING ─────────────────────────────────────────────────────────────────
+// ── EMOJİ ŞİFRE SEÇİCİ ───────────────────────────────────────────────────────
+const EMOJI_OPTIONS = ["🌟","🎈","🦁","🍕","🚀","🌈","🐶","🎮","🏆","🦋","🍦","⚽","🎵","🌸","🐱","🎯","🦄","🍎","🎨","🌙","🐸","🎲","🦊","🍩"];
+
+function EmojiPinPicker({ value, onChange, label }) {
+  const [open, setOpen] = useState(false);
+  const pin = value || [];
+
+  const pick = (e) => {
+    if(pin.length >= 4) return;
+    const next = [...pin, e];
+    onChange(next);
+    if(next.length === 4) setOpen(false);
+  };
+  const clear = () => onChange([]);
+
+  return <div style={{ marginBottom:20 }}>
+    <p style={{ fontFamily:"'Nunito',sans-serif", fontWeight:700, color:T.dark, marginBottom:10, fontSize:14 }}>{label}</p>
+    {/* Seçilen 4 emoji */}
+    <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+      {[0,1,2,3].map(i=>(
+        <div key={i} style={{ width:56, height:56, borderRadius:14, background: pin[i] ? T.card : "#F0E8DC", border:`2px solid ${pin[i]?T.primary:"#E0D6CC"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, boxShadow:pin[i]?T.shadow:"none" }}>
+          {pin[i]||<span style={{color:"#D0C8BE",fontSize:18}}>?</span>}
+        </div>
+      ))}
+    </div>
+    <div style={{ display:"flex", gap:8 }}>
+      <button onClick={()=>setOpen(!open)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${T.primary}`, background:"transparent", color:T.primary, fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, cursor:"pointer" }}>
+        {pin.length<4 ? "Emoji Seç 👆" : "Degistir ✏️"}
+      </button>
+      {pin.length>0&&<button onClick={clear} style={{ padding:"10px 14px", borderRadius:12, border:"2px solid #E0D6CC", background:"#F0E8DC", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, cursor:"pointer", color:T.muted }}>Sıfırla</button>}
+    </div>
+    {open && (
+      <div style={{ background:T.card, borderRadius:16, padding:16, marginTop:10, boxShadow:T.shadow }}>
+        <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginBottom:8 }}>4 emoji seç ({pin.length}/4)</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:6 }}>
+          {EMOJI_OPTIONS.map((e,i)=>(
+            <div key={i} onClick={()=>pick(e)}
+              style={{ height:44, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, borderRadius:10, background:"#F5F0EA", cursor:pin.length>=4?"not-allowed":"pointer", opacity:pin.length>=4?0.5:1 }}>
+              {e}
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>;
+}
+
+// ── EMOJİ PIN GİRİŞ EKRANI ───────────────────────────────────────────────────
+function EmojiPinEntry({ member, onSuccess, onBack }) {
+  const [entered, setEntered] = useState([]);
+  const [error, setError] = useState(false);
+  const correct = member.emojiPin || [];
+
+  const pick = (e) => {
+    if(entered.length >= 4) return;
+    const next = [...entered, e];
+    setEntered(next);
+    if(next.length === 4) {
+      if(JSON.stringify(next) === JSON.stringify(correct)) {
+        setTimeout(()=>onSuccess(), 200);
+      } else {
+        setError(true);
+        setTimeout(()=>{ setEntered([]); setError(false); }, 800);
+      }
+    }
+  };
+
+  return <div style={{ minHeight:"100vh", background:T.anatoliaBg, display:"flex", flexDirection:"column", justifyContent:"center", padding:"32px 22px" }}>
+    <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", alignSelf:"flex-start", marginBottom:20 }}>←</button>
+    <div style={{ textAlign:"center", marginBottom:28 }}>
+      <div style={{ fontSize:56, marginBottom:8 }}>{member.emoji}</div>
+      <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:24, color:T.dark }}>{member.name}</div>
+      <div style={{ color:T.muted, fontSize:14, marginTop:4 }}>Emoji sifrenizi girin</div>
+    </div>
+
+    {/* Girilen emojiler */}
+    <div style={{ display:"flex", gap:10, justifyContent:"center", marginBottom:24 }}>
+      {[0,1,2,3].map(i=>(
+        <div key={i} style={{ width:60, height:60, borderRadius:16, background: error?"#FEE2E2": entered[i]?T.card:"#F0E8DC", border:`2px solid ${error?"#DC2626":entered[i]?T.primary:"#E0D6CC"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, transition:"all 0.2s" }}>
+          {entered[i]||""}
+        </div>
+      ))}
+    </div>
+
+    {error && <div style={{ textAlign:"center", color:"#DC2626", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, marginBottom:12 }}>Yanlis! Tekrar dene 🔒</div>}
+
+    {/* Emoji klavye */}
+    <div style={{ background:T.card, borderRadius:20, padding:16, boxShadow:T.shadow }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:8 }}>
+        {EMOJI_OPTIONS.map((e,i)=>(
+          <div key={i} onClick={()=>pick(e)}
+            style={{ height:48, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, borderRadius:12, background:"#F5F0EA", cursor:"pointer", transition:"transform 0.1s" }}
+            onMouseDown={el=>el.currentTarget.style.transform="scale(0.9)"}
+            onMouseUp={el=>el.currentTarget.style.transform="scale(1)"}>
+            {e}
+          </div>
+        ))}
+      </div>
+      {entered.length>0 && (
+        <button onClick={()=>setEntered(entered.slice(0,-1))} style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:12, border:"none", background:"#F0E8DC", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, color:T.muted, cursor:"pointer" }}>
+          ← Sil
+        </button>
+      )}
+    </div>
+  </div>;
+}
 function WelcomeScreen({ onNext }) {
   return <Screen style={{ justifyContent:"center", alignItems:"center", textAlign:"center", background:"linear-gradient(160deg,#FFF8F0 0%,#FFE8D6 100%)" }}>
     <div style={{ fontSize:80, marginBottom:8, animation:"bounce 2s infinite" }}>🏡</div>
@@ -203,11 +341,11 @@ function ParentProfileScreen({ onNext, onBack, data, setData }) {
     <BackBtn onBack={onBack}/>
     <StepBar step={1} total={5}/>
     <h2 style={{ fontFamily:"'Nunito',sans-serif", fontSize:26, fontWeight:900, color:T.dark, margin:"0 0 4px" }}>Senin profilin 👋</h2>
-    <p style={{ color:T.muted, fontSize:14, marginBottom:24 }}>Adını gir ve rolünü seç</p>
+    <p style={{ color:T.muted, fontSize:14, marginBottom:24 }}>Adını gir, rolünü ve emoji sifrenizi seç</p>
     <input type="text" placeholder="Adın nedir?" value={data.name||""} onChange={e=>setData({...data, name:e.target.value})}
       style={{...inputStyle, marginBottom:20}}/>
     <p style={{ fontFamily:"'Nunito',sans-serif", fontWeight:700, color:T.dark, marginBottom:12, fontSize:14 }}>Rol seç:</p>
-    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:24 }}>
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
       {AVATARS.slice(0,2).map(a=>(
         <div key={a.id} onClick={()=>setData({...data, avatar:a.id})}
           style={{ background:data.avatar===a.id?T.primary:T.card, borderRadius:16, padding:"20px 10px", textAlign:"center", cursor:"pointer", boxShadow:T.shadow, border:`2px solid ${data.avatar===a.id?T.primary:"transparent"}` }}>
@@ -216,7 +354,8 @@ function ParentProfileScreen({ onNext, onBack, data, setData }) {
         </div>
       ))}
     </div>
-    <Btn onClick={()=>onNext()} disabled={!data.name||!data.avatar}>Devam →</Btn>
+    <EmojiPinPicker value={data.emojiPin||[]} onChange={pin=>setData({...data, emojiPin:pin})} label="Emoji Sifreniz 🔒 (4 emoji seç)"/>
+    <Btn onClick={()=>onNext()} disabled={!data.name||!data.avatar||(data.emojiPin||[]).length<4}>Devam →</Btn>
   </Screen>;
 }
 
@@ -224,10 +363,11 @@ function AddChildScreen({ onNext, onBack, data, setData }) {
   const [cn, setCn] = useState("");
   const [ca, setCa] = useState("");
   const [cv, setCv] = useState("");
+  const [cp, setCp] = useState([]);
   const add = () => {
-    if (!cn || !ca || !cv) return;
-    setData({...data, children:[...(data.children||[]), {name:cn, age:ca, avatar:cv}]});
-    setCn(""); setCa(""); setCv("");
+    if (!cn || !ca || !cv || !cp || cp.length < 4) return;
+    setData({...data, children:[...(data.children||[]), {name:cn, age:ca, avatar:cv, emojiPin:cp}]});
+    setCn(""); setCa(""); setCv(""); setCp([]);
   };
   const remove = (i) => {
     const arr = [...(data.children||[])];
@@ -265,7 +405,8 @@ function AddChildScreen({ onNext, onBack, data, setData }) {
             </div>
           ))}
         </div>
-        <Btn variant="ghost" onClick={add} disabled={!cn||!ca||!cv}>+ Çocuk Ekle</Btn>
+        <EmojiPinPicker value={cp} onChange={setCp} label="Emoji Sifre 🔒"/>
+        <Btn variant="ghost" onClick={add} disabled={!cn||!ca||!cv||cp.length<4}>+ Çocuk Ekle</Btn>
       </div>
     )}
     <Btn onClick={()=>onNext()}>Devam → {(data.children||[]).length===0 ? "(çocuksuz)" : ""}</Btn>
@@ -346,9 +487,10 @@ function CouncilScreen({ onNext, onBack, data, setData }) {
   </Screen>;
 }
 
-function LaunchScreen({ data, familyCode, onFinish }) {
+function LaunchScreen({ data, familyCode, onFinish, onBack }) {
   const theme = MAP_THEMES.find(t=>t.id===data.mapTheme);
   return <Screen>
+    <BackBtn onBack={onBack}/>
     <StepBar step={4} total={5}/>
     <h2 style={{ fontFamily:"'Nunito',sans-serif", fontSize:26, fontWeight:900, color:T.dark, margin:"0 0 4px" }}>Her sey hazır! 🚀</h2>
     <p style={{ color:T.muted, fontSize:14, marginBottom:20 }}>Ailenizin macerası baslamak üzere</p>
@@ -380,25 +522,44 @@ function LaunchScreen({ data, familyCode, onFinish }) {
 
 // ── KULLANICI SEÇİMİ ──────────────────────────────────────────────────────────
 function UserSelectScreen({ data, familyCode, onSelect }) {
+  const [addingParent, setAddingParent] = useState(false);
+  const [p2name, setP2name] = useState("");
+  const [p2avatar, setP2avatar] = useState("");
+  const [p2pin, setP2pin] = useState([]);
+  const [pinTarget, setPinTarget] = useState(null);
+
   const members = [
-    { id:"parent", emoji:AVATARS.find(a=>a.id===data.avatar)?.emoji||"👩", name:data.name||"Ebeveyn", role:"Ebeveyn", ownerKey:"parent" },
+    { id:"parent", emoji:AVATARS.find(a=>a.id===data.avatar)?.emoji||"👩", name:data.name||"Ebeveyn", role:"Ebeveyn", ownerKey:"parent", emojiPin:data.emojiPin||[] },
     ...((data.children||[]).map((c,i)=>({
       id:`child_${i}`, emoji:AVATARS.find(a=>a.id===c.avatar)?.emoji||"👧",
-      name:c.name, role:`${c.age} yas`, ownerKey:"child", childIndex:i,
+      name:c.name, role:`${c.age} yas`, ownerKey:"child", childIndex:i, emojiPin:c.emojiPin||[],
     }))),
+    ...(data.parent2 ? [{
+      id:"parent2", emoji:AVATARS.find(a=>a.id===data.parent2.avatar)?.emoji||"👨",
+      name:data.parent2.name, role:"Ebeveyn", ownerKey:"parent", emojiPin:data.parent2.emojiPin||[],
+    }] : []),
   ];
+
+  if(pinTarget) {
+    return <EmojiPinEntry
+      member={pinTarget}
+      onSuccess={()=>{ onSelect(pinTarget); setPinTarget(null); }}
+      onBack={()=>setPinTarget(null)}
+    />;
+  }
+
   return <div style={{ minHeight:"100vh", background:T.anatoliaBg, display:"flex", flexDirection:"column", justifyContent:"center", padding:"32px 22px" }}>
     <div style={{ textAlign:"center", marginBottom:32 }}>
       <div style={{ fontSize:60, marginBottom:8 }}>👋</div>
       <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:28, color:T.dark }}>Kim oynuyor?</div>
-      <div style={{ color:T.muted, fontSize:14, marginTop:6 }}>Adına görevlerini gör ve hakkını kullan</div>
+      <div style={{ color:T.muted, fontSize:14, marginTop:6 }}>Seç ve emoji sifrenle giriş yap 🔒</div>
       <div style={{ marginTop:10, background:"rgba(255,107,53,0.1)", borderRadius:99, padding:"4px 14px", display:"inline-block", fontFamily:"'Nunito',sans-serif", fontSize:12, fontWeight:700, color:T.primary }}>
         Aile kodu: {familyCode}
       </div>
     </div>
     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
       {members.map(m=>(
-        <div key={m.id} onClick={()=>onSelect(m)}
+        <div key={m.id} onClick={()=>setPinTarget(m)}
           style={{ background:T.card, borderRadius:22, padding:"18px 20px", cursor:"pointer", boxShadow:T.shadow, display:"flex", alignItems:"center", gap:16, border:"2px solid #E8DDD0" }}
           onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
           onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
@@ -407,116 +568,366 @@ function UserSelectScreen({ data, familyCode, onSelect }) {
             <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:18, color:T.dark }}>{m.name}</div>
             <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, color:T.muted }}>{m.role}</div>
           </div>
-          <div style={{ fontSize:22, color:T.primary }}>→</div>
+          <div style={{ fontSize:18 }}>🔒→</div>
         </div>
       ))}
+
+      {!data.parent2 && !addingParent && (
+        <div onClick={()=>setAddingParent(true)}
+          style={{ background:"#F0EAE2", borderRadius:22, padding:"18px 20px", cursor:"pointer", display:"flex", alignItems:"center", gap:16, border:"2px dashed #D0C0A8" }}>
+          <div style={{ fontSize:48, background:"#E8DDD0", borderRadius:99, width:64, height:64, display:"flex", alignItems:"center", justifyContent:"center" }}>➕</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.muted }}>2. Ebeveyn Ekle</div>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, color:"#C0B0A0" }}>Anne veya baba olarak katıl</div>
+          </div>
+        </div>
+      )}
+
+      {addingParent && (
+        <div style={{ background:T.card, borderRadius:22, padding:"20px", boxShadow:T.shadow, border:"2px solid #e8cfa0" }}>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, marginBottom:14 }}>2. Ebeveyn Bilgileri</div>
+          <input type="text" placeholder="Adın nedir?" value={p2name} onChange={e=>setP2name(e.target.value)}
+            style={{...inputStyle, marginBottom:14}}/>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+            {AVATARS.slice(0,2).map(a=>(
+              <div key={a.id} onClick={()=>setP2avatar(a.id)}
+                style={{ background:p2avatar===a.id?T.primary:T.card, borderRadius:16, padding:"16px 10px", textAlign:"center", cursor:"pointer", border:`2px solid ${p2avatar===a.id?T.primary:"#E0D6CC"}` }}>
+                <div style={{ fontSize:40 }}>{a.emoji}</div>
+                <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:700, fontSize:13, color:p2avatar===a.id?"#fff":T.dark, marginTop:6 }}>{a.label}</div>
+              </div>
+            ))}
+          </div>
+          <EmojiPinPicker value={p2pin} onChange={setP2pin} label="Emoji Sifre 🔒"/>
+          <div style={{ display:"flex", gap:10 }}>
+            <Btn onClick={()=>{
+              if(!p2name||!p2avatar||p2pin.length<4) return;
+              const p2 = {name:p2name, avatar:p2avatar, emojiPin:p2pin};
+              set(ref(db, `families/${familyCode}`), {...data, parent2:p2, familyCode});
+              onSelect({id:"parent2", emoji:AVATARS.find(a=>a.id===p2avatar)?.emoji||"👨", name:p2name, role:"Ebeveyn", ownerKey:"parent", emojiPin:p2pin});
+            }} disabled={!p2name||!p2avatar||p2pin.length<4} style={{ flex:2 }}>Katıl →</Btn>
+            <Btn variant="ghost" onClick={()=>setAddingParent(false)} style={{ flex:1 }}>İptal</Btn>
+          </div>
+        </div>
+      )}
     </div>
   </div>;
 }
 
 // ── MİNİ OYUNLAR ──────────────────────────────────────────────────────────────
-function MiniGameModal({ onClose, onWin }) {
-  const [game] = useState(()=>Math.random()<0.5?"hunt":"balloon");
-  const [phase, setPhase] = useState("intro");
+
+// Hafıza kartı verisi
+const MEMORY_CARDS = [
+  {id:1,emoji:"🌟"},{id:2,emoji:"🎈"},{id:3,emoji:"🦁"},{id:4,emoji:"🍕"},
+  {id:5,emoji:"🚀"},{id:6,emoji:"🌈"},{id:7,emoji:"🐶"},{id:8,emoji:"🎮"},
+];
+
+function MiniGameModal({ onClose, onWin, forceGame }) {
+  const GAMES = [
+    {id:"hunt",    emoji:"⚡", name:"Esya Avı",          desc:"60 sn evden renk avı!"},
+    {id:"balloon", emoji:"🎈", name:"Senkronize Balon",  desc:"İkisi aynı anda bassın!"},
+    {id:"freeze",  emoji:"🎵", name:"Don-Ates Müzikali", desc:"Müzik durunca donun!"},
+    {id:"memory",  emoji:"🧠", name:"Hafıza Kartları",   desc:"Eslesenleri bul!"},
+    {id:"nolaughing",emoji:"😐",name:"Gülmeme Challenge",desc:"Gülen kaybeder!"},
+  ];
+
+  const [selectedGame, setSelectedGame] = useState(forceGame||null);
+  const [game, setGame] = useState(forceGame||null);
+  const [phase, setPhase] = useState("select"); // select | intro | playing | won | lost
   const [timeLeft, setTimeLeft] = useState(60);
+
+  // Eşya avı
   const [target] = useState(()=>{
-    const TARGETS=[
-      {color:"kırmızı",emoji:"🔴",hint:"Kırmızı renkli bir esya"},
-      {color:"mavi",emoji:"🔵",hint:"Mavi renkli bir esya"},
-      {color:"sarı",emoji:"🟡",hint:"Sarı renkli bir esya"},
-      {color:"yesil",emoji:"🟢",hint:"Yesil renkli bir esya"},
+    const T2=[
+      {emoji:"🔴",hint:"Kırmızı renkli bir esya"},
+      {emoji:"🔵",hint:"Mavi renkli bir esya"},
+      {emoji:"🟡",hint:"Sarı renkli bir esya"},
+      {emoji:"🟢",hint:"Yesil renkli bir esya"},
+      {emoji:"⚪",hint:"Beyaz renkli bir esya"},
     ];
-    return TARGETS[Math.floor(Math.random()*TARGETS.length)];
+    return T2[Math.floor(Math.random()*T2.length)];
   });
+
+  // Senkronize balon
   const [balloonSize, setBalloonSize] = useState(40);
   const [p1, setP1] = useState(false);
   const [p2, setP2] = useState(false);
 
+  // Don-Ates
+  const [musicOn, setMusicOn] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+  const [freezeTimer, setFreezeTimer] = useState(10);
+
+  // Hafıza kartları
+  const [cards, setCards] = useState(()=>{
+    const doubled = [...MEMORY_CARDS,...MEMORY_CARDS].map((c,i)=>({...c,uid:i,flipped:false,matched:false}));
+    return doubled.sort(()=>Math.random()-0.5);
+  });
+  const [flipped, setFlipped] = useState([]);
+  const [matchCount, setMatchCount] = useState(0);
+
+  // Gülmeme
+  const [laughTimer, setLaughTimer] = useState(60);
+
   useEffect(()=>{
     if(phase!=="playing") return;
-    if(game==="hunt"){
-      let t=60;
-      const iv=setInterval(()=>{ t--; setTimeLeft(t); if(t<=0){clearInterval(iv);setPhase("lost");} },1000);
-      return ()=>clearInterval(iv);
-    } else {
-      let s=40;
-      const iv=setInterval(()=>{ s+=2; setBalloonSize(s); if(s>=200){clearInterval(iv);setPhase("lost");} },120);
-      return ()=>clearInterval(iv);
+    let iv;
+    if(game==="hunt"||game==="nolaughing"){
+      let t = game==="hunt"?60:60;
+      iv=setInterval(()=>{ t--; if(game==="hunt") setTimeLeft(t); else setLaughTimer(t); if(t<=0){clearInterval(iv);setPhase(game==="nolaughing"?"won":"lost");} },1000);
     }
-  },[phase]);
+    if(game==="balloon"){
+      let s=40;
+      iv=setInterval(()=>{ s+=2; setBalloonSize(s); if(s>=200){clearInterval(iv);setPhase("lost");} },120);
+    }
+    if(game==="freeze"){
+      // Müzik oynuyor  -  rastgele 5-12 sn sonra dur
+      const dur = (5+Math.random()*7)*1000;
+      setMusicOn(true);
+      const t=setTimeout(()=>{ setMusicOn(false); setFrozen(true); let c=10; iv=setInterval(()=>{ c--; setFreezeTimer(c); if(c<=0){clearInterval(iv);setPhase("won");} },1000); },dur);
+      return ()=>{ clearTimeout(t); clearInterval(iv); };
+    }
+    return ()=>clearInterval(iv);
+  },[phase,game]);
 
   useEffect(()=>{ if(p1&&p2) setPhase("won"); },[p1,p2]);
 
-  return <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:150 }}>
-    <div style={{ background:T.bg, borderRadius:"28px 28px 0 0", width:"100%", maxWidth:390, padding:"24px 22px 40px", minHeight:"60vh", display:"flex", flexDirection:"column" }}>
-      <div style={{ width:40, height:4, borderRadius:99, background:"#D0C8BE", margin:"0 auto 20px" }}/>
+  // Hafıza kartı tıklama
+  const flipCard = (uid) => {
+    if(flipped.length===2) return;
+    const card = cards.find(c=>c.uid===uid);
+    if(!card||card.flipped||card.matched) return;
+    const newCards = cards.map(c=>c.uid===uid?{...c,flipped:true}:c);
+    setCards(newCards);
+    const newFlipped = [...flipped, {uid, id:card.id}];
+    setFlipped(newFlipped);
+    if(newFlipped.length===2){
+      if(newFlipped[0].id===newFlipped[1].id){
+        setTimeout(()=>{
+          setCards(prev=>prev.map(c=>newFlipped.some(f=>f.uid===c.uid)?{...c,matched:true}:c));
+          const nm = matchCount+1;
+          setMatchCount(nm);
+          if(nm===MEMORY_CARDS.length) setPhase("won");
+          setFlipped([]);
+        },400);
+      } else {
+        setTimeout(()=>{
+          setCards(prev=>prev.map(c=>newFlipped.some(f=>f.uid===c.uid)?{...c,flipped:false}:c));
+          setFlipped([]);
+        },800);
+      }
+    }
+  };
 
-      {game==="hunt" && <>
-        {phase==="intro"&&<div style={{ textAlign:"center", flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontSize:64, marginBottom:12 }}>⚡</div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.dark, marginBottom:8 }}>Esya Avı!</div>
-          <div style={{ color:T.muted, fontSize:14, marginBottom:24, lineHeight:1.6 }}>60 saniyede evden istenen renkteki esyayı bulup getirin!</div>
-          <Btn onClick={()=>setPhase("playing")}>Basla! 🏃</Btn>
-        </div>}
-        {phase==="playing"&&<div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:64, color:timeLeft<=10?"#DC2626":T.primary }}>{timeLeft}</div>
-          <div style={{ background:"linear-gradient(135deg,#FFE8D6,#FFD4B8)", borderRadius:22, padding:"24px 20px", textAlign:"center", width:"100%", marginBottom:24 }}>
-            <div style={{ fontSize:72, marginBottom:8 }}>{target.emoji}</div>
-            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:20, color:T.dark }}>{target.hint}</div>
-            <div style={{ color:T.muted, fontSize:13, marginTop:6 }}>bulup masaya getirin!</div>
-          </div>
-          <Btn onClick={()=>setPhase("won")}>Bulduk! Görevi Basardık! ✅</Btn>
-        </div>}
-        {phase==="won"&&<div style={{ textAlign:"center", flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontSize:72, marginBottom:12 }}>🎉</div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.secondary, marginBottom:8 }}>Harika is!</div>
-          <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>+1 ekstra adım kazandınız!</div>
-          <Btn onClick={()=>{onWin();onClose();}}>+1 Adım Al 🎁</Btn>
-        </div>}
-        {phase==="lost"&&<div style={{ textAlign:"center", flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontSize:72, marginBottom:12 }}>⏰</div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.primary, marginBottom:24 }}>Süre Doldu!</div>
-          <Btn variant="ghost" onClick={onClose}>Tamam</Btn>
-        </div>}
-      </>}
+  const startGame = (g) => {
+    setGame(g);
+    setPhase("intro");
+  };
 
-      {game==="balloon" && <>
-        {phase==="intro"&&<div style={{ textAlign:"center", flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontSize:64, marginBottom:12 }}>🎈</div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.dark, marginBottom:8 }}>Senkronize Balon!</div>
-          <div style={{ color:T.muted, fontSize:14, marginBottom:24, lineHeight:1.6 }}>İki kisi tam aynı anda butonlara basmalı  -  balon patlamadan!</div>
-          <Btn onClick={()=>setPhase("playing")}>Hazırız! 🎈</Btn>
-        </div>}
-        {phase==="playing"&&<div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center" }}>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:T.muted, marginBottom:12, textAlign:"center" }}>Balon patlamadan ikisi birden basın!</div>
-          <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <div style={{ width:balloonSize, height:balloonSize*1.2, background:"radial-gradient(circle at 35% 35%,#ff8080,#FF6B35)", borderRadius:"50% 50% 50% 50% / 60% 60% 40% 40%", display:"flex", alignItems:"center", justifyContent:"center" }}>🎈</div>
+  const gameName = GAMES.find(g=>g.id===game)?.name||"";
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:150 }}
+      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div style={{ background:T.bg, borderRadius:"28px 28px 0 0", width:"100%", maxWidth:390, maxHeight:"90vh", display:"flex", flexDirection:"column" }}>
+
+        {/* Header */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 20px 8px" }}>
+          <div style={{ width:40, height:4, borderRadius:99, background:"#D0C8BE", margin:"0 auto" }}/>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 20px 10px" }}>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:18, color:T.dark }}>
+            {phase==="select" ? "Mini Oyun Seç ⚡" : `${gameName}`}
           </div>
-          <div style={{ display:"flex", gap:16, width:"100%" }}>
-            <button onPointerDown={()=>setP1(true)} style={{ flex:1, height:80, borderRadius:20, border:"none", background:p1?T.secondary:"#4ECDC444", fontSize:18, cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontWeight:900, color:p1?"#fff":T.secondary }}>
-              {p1?"✓":"BAS!"}
-            </button>
-            <button onPointerDown={()=>setP2(true)} style={{ flex:1, height:80, borderRadius:20, border:"none", background:p2?T.primary:"#FF6B3544", fontSize:18, cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontWeight:900, color:p2?"#fff":T.primary }}>
-              {p2?"✓":"BAS!"}
-            </button>
+          <div style={{ display:"flex", gap:8 }}>
+            {phase!=="select"&&<button onClick={()=>{setPhase("select");setGame(null);setFlipped([]);setMatchCount(0);setP1(false);setP2(false);}} style={{ background:"#F0E8DC", border:"none", borderRadius:99, padding:"6px 12px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, cursor:"pointer", color:T.muted }}>← Geri</button>}
+            <button onClick={onClose} style={{ background:"#F0E8DC", border:"none", borderRadius:99, width:36, height:36, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
           </div>
-        </div>}
-        {phase==="won"&&<div style={{ textAlign:"center", flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontSize:72, marginBottom:12 }}>🤝</div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.secondary, marginBottom:8 }}>Mükemmel Senkron!</div>
-          <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>+1 ekstra adım kazandınız!</div>
-          <Btn onClick={()=>{onWin();onClose();}}>+1 Adım Al 🎁</Btn>
-        </div>}
-        {phase==="lost"&&<div style={{ textAlign:"center", flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ fontSize:72, marginBottom:12 }}>💥</div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.primary, marginBottom:24 }}>Balon Patladı!</div>
-          <Btn variant="ghost" onClick={onClose}>Tamam</Btn>
-        </div>}
-      </>}
+        </div>
+
+        <div style={{ flex:1, overflowY:"auto", padding:"0 20px 40px" }}>
+
+          {/* OYUN SEÇİM EKRANI */}
+          {phase==="select" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12, paddingTop:8 }}>
+              {GAMES.map(g=>(
+                <div key={g.id} onClick={()=>startGame(g.id)}
+                  style={{ background:T.card, borderRadius:18, padding:"16px 18px", cursor:"pointer", display:"flex", alignItems:"center", gap:14, boxShadow:T.shadow, border:"2px solid #E8DDD0" }}
+                  onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
+                  onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}>
+                  <div style={{ fontSize:36, minWidth:44, textAlign:"center" }}>{g.emoji}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:15, color:T.dark }}>{g.name}</div>
+                    <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginTop:2 }}>{g.desc}</div>
+                  </div>
+                  <div style={{ color:T.primary, fontSize:18 }}>→</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* EŞYA AVI */}
+          {game==="hunt"&&<>
+            {phase==="intro"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>⚡</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:16, color:T.dark, marginBottom:8 }}>Esya Avı!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:24, lineHeight:1.6 }}>60 saniyede evden istenen renkteki esyayı bulup getirin!</div>
+              <Btn onClick={()=>setPhase("playing")}>Basla! 🏃</Btn>
+            </div>}
+            {phase==="playing"&&<div style={{ display:"flex", flexDirection:"column", alignItems:"center", paddingTop:10 }}>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:72, color:timeLeft<=10?"#DC2626":T.primary, lineHeight:1 }}>{timeLeft}</div>
+              <div style={{ background:"linear-gradient(135deg,#FFE8D6,#FFD4B8)", borderRadius:22, padding:"24px 20px", textAlign:"center", width:"100%", marginBottom:20, marginTop:12 }}>
+                <div style={{ fontSize:64, marginBottom:8 }}>{target.emoji}</div>
+                <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:20, color:T.dark }}>{target.hint}</div>
+                <div style={{ color:T.muted, fontSize:13, marginTop:6 }}>bulup masaya getirin!</div>
+              </div>
+              <Btn onClick={()=>setPhase("won")}>Bulduk! ✅</Btn>
+            </div>}
+            {phase==="won"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🎉</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.secondary, marginBottom:24 }}>Harika is! +1 adım!</div>
+              <Btn onClick={()=>{onWin();onClose();}}>+1 Adım Al 🎁</Btn>
+            </div>}
+            {phase==="lost"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>⏰</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.primary, marginBottom:24 }}>Süre Doldu!</div>
+              <Btn variant="ghost" onClick={onClose}>Tamam</Btn>
+            </div>}
+          </>}
+
+          {/* SENKRONİZE BALON */}
+          {game==="balloon"&&<>
+            {phase==="intro"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🎈</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:16, color:T.dark, marginBottom:8 }}>Senkronize Balon!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:24, lineHeight:1.6 }}>Balon patlamadan ikisi aynı anda basmalı!</div>
+              <Btn onClick={()=>setPhase("playing")}>Hazırız! 🎈</Btn>
+            </div>}
+            {phase==="playing"&&<div style={{ display:"flex", flexDirection:"column", alignItems:"center", paddingTop:10 }}>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:T.muted, marginBottom:8, textAlign:"center" }}>Balon patlamadan ikisi birden basın!</div>
+              <div style={{ height:180, display:"flex", alignItems:"center", justifyContent:"center", width:"100%" }}>
+                <div style={{ width:balloonSize, height:balloonSize*1.2, background:"radial-gradient(circle at 35% 35%,#ff8080,#FF6B35)", borderRadius:"50% 50% 50% 50% / 60% 60% 40% 40%" }}>🎈</div>
+              </div>
+              <div style={{ display:"flex", gap:12, width:"100%", marginTop:8 }}>
+                <button onPointerDown={()=>setP1(true)} style={{ flex:1, height:70, borderRadius:16, border:"none", background:p1?T.secondary+"88":"#4ECDC422", fontSize:16, cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontWeight:900, color:p1?"#fff":T.secondary }}>{p1?"✓":"BAS!"}</button>
+                <button onPointerDown={()=>setP2(true)} style={{ flex:1, height:70, borderRadius:16, border:"none", background:p2?T.primary+"88":"#FF6B3522", fontSize:16, cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontWeight:900, color:p2?"#fff":T.primary }}>{p2?"✓":"BAS!"}</button>
+              </div>
+            </div>}
+            {phase==="won"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🤝</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.secondary, marginBottom:24 }}>Mükemmel! +1 adım!</div>
+              <Btn onClick={()=>{onWin();onClose();}}>+1 Adım Al 🎁</Btn>
+            </div>}
+            {phase==="lost"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>💥</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.primary, marginBottom:24 }}>Balon Patladı!</div>
+              <Btn variant="ghost" onClick={onClose}>Tamam</Btn>
+            </div>}
+          </>}
+
+          {/* DON-ATES MÜZİKALİ */}
+          {game==="freeze"&&<>
+            {phase==="intro"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🎵</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:16, color:T.dark, marginBottom:8 }}>Don-Ates Müzikali!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:8, lineHeight:1.6 }}>Müzik çalarken herkes dans eder. Müzik durduğunda ekranda <b>"HEYKEL OL!"</b> yazar.</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>10 saniye boyunca donup kalın. Kıpırdayan tatlı ceza alır!</div>
+              <Btn onClick={()=>setPhase("playing")}>Basla! 💃</Btn>
+            </div>}
+            {phase==="playing"&&<div style={{ textAlign:"center", paddingTop:10 }}>
+              {!frozen ? (
+                <div>
+                  <div style={{ fontSize:80, marginBottom:16, animation:"bounce 0.5s infinite" }}>🎵</div>
+                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:28, color:T.primary, marginBottom:8 }}>DANS ET! 💃🕺</div>
+                  <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>Müzik herhangi bir anda duracak...</div>
+                  <div style={{ background:"#F0E8DC", borderRadius:14, padding:"12px 16px", color:T.muted, fontSize:12 }}>Müzik durunca otomatik "HEYKEL OL!" ekranı gelecek</div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:40, color:"#DC2626", marginBottom:8, animation:"none" }}>HEYKEL OL!</div>
+                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:80, color:T.dark, lineHeight:1 }}>{freezeTimer}</div>
+                  <div style={{ color:T.muted, fontSize:14, marginTop:8 }}>Kıpırdama! 🗿</div>
+                </div>
+              )}
+            </div>}
+            {phase==="won"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🏆</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.secondary, marginBottom:8 }}>Harika dondiniz!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:16 }}>Kıpırdayan var mıydı? Varsa tatlı ceza alsın!</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                <Btn onClick={()=>{onWin();onClose();}}>Kimse kıpırdamadı! +1 Adım 🎁</Btn>
+                <Btn variant="ghost" onClick={onClose}>Kıpırdayan vardı (tatlı ceza)</Btn>
+              </div>
+            </div>}
+          </>}
+
+          {/* HAFIZA KARTLARI */}
+          {game==="memory"&&<>
+            {phase==="intro"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🧠</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:16, color:T.dark, marginBottom:8 }}>Hafıza Kartları!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:24, lineHeight:1.6 }}>Kartları çevirin, eslesenleri bulun. Tüm çiftleri bulan aile +1 adım kazanır!</div>
+              <Btn onClick={()=>setPhase("playing")}>Basla! 🧠</Btn>
+            </div>}
+            {phase==="playing"&&<div style={{ paddingTop:10 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12, alignItems:"center" }}>
+                <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, color:T.muted }}>{matchCount}/{MEMORY_CARDS.length} eslesme</div>
+                <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:14, color:T.primary }}>{MEMORY_CARDS.length-matchCount} kaldı</div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+                {cards.map(card=>(
+                  <div key={card.uid} onClick={()=>flipCard(card.uid)}
+                    style={{ height:72, borderRadius:14, display:"flex", alignItems:"center", justifyContent:"center", cursor:card.matched?"default":"pointer", background:card.matched?"linear-gradient(135deg,#d4efdf,#82e0aa)":card.flipped?T.card:"linear-gradient(135deg,#FF6B35,#FF8C42)", border:card.matched?"2px solid #1E8449":"2px solid transparent", fontSize:card.flipped||card.matched?32:0, transition:"all 0.2s", boxShadow:T.shadow }}>
+                    {(card.flipped||card.matched)?card.emoji:""}
+                  </div>
+                ))}
+              </div>
+            </div>}
+            {phase==="won"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🧠</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.secondary, marginBottom:24 }}>Tüm eslesmeleri buldunuz! +1 adım!</div>
+              <Btn onClick={()=>{onWin();onClose();}}>+1 Adım Al 🎁</Btn>
+            </div>}
+          </>}
+
+          {/* GÜLMEME CHALLENGE */}
+          {game==="nolaughing"&&<>
+            {phase==="intro"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>😐</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:16, color:T.dark, marginBottom:8 }}>Gülmeme Challenge!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:8, lineHeight:1.6 }}>Karşılıklı oturun, birbirinizin gözlerine bakın. Konusmak serbest ama gülmek yasak!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>60 saniye boyunca gülen kaybeder ve tatlı ceza alır!</div>
+              <Btn onClick={()=>setPhase("playing")}>Basla! 😐</Btn>
+            </div>}
+            {phase==="playing"&&<div style={{ textAlign:"center", paddingTop:10 }}>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:80, color:laughTimer<=10?"#DC2626":T.dark, lineHeight:1, marginBottom:8 }}>{laughTimer}</div>
+              <div style={{ fontSize:48, marginBottom:16 }}>😐</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:20, color:T.dark, marginBottom:8 }}>GÜLME!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>Birbirinizin gözlerine bakın...</div>
+              <div style={{ display:"flex", gap:10 }}>
+                <Btn onClick={()=>setPhase("won")} style={{ flex:1 }}>60 sn doldu! Kimse gülmedi 🏆</Btn>
+              </div>
+              <div style={{ marginTop:10 }}>
+                <Btn variant="ghost" onClick={()=>setPhase("lost")}>Güldü! Tatlı ceza 😂</Btn>
+              </div>
+            </div>}
+            {phase==="won"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>🏆</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.secondary, marginBottom:24 }}>Demir yüzlüler! +1 adım!</div>
+              <Btn onClick={()=>{onWin();onClose();}}>+1 Adım Al 🎁</Btn>
+            </div>}
+            {phase==="lost"&&<div style={{ textAlign:"center", paddingTop:20 }}>
+              <div style={{ fontSize:64, marginBottom:12 }}>😂</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.primary, marginBottom:8 }}>Güldü!</div>
+              <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>Gülen kisi tatlı ceza alıyor!</div>
+              <Btn variant="ghost" onClick={onClose}>Tamam</Btn>
+            </div>}
+          </>}
+
+        </div>
+      </div>
     </div>
-  </div>;
+  );
 }
-
 // ── TATLI CEZA ────────────────────────────────────────────────────────────────
 function SurpriseModal({ onClose }) {
   const cats = Object.values(SURPRISE_POOL);
@@ -660,6 +1071,24 @@ function TaskPoolModal({ activeTasks, onAdd, onClose }) {
 }
 
 // ── PUSULA / ZAR ──────────────────────────────────────────────────────────────
+// Zar yüzü SVG  -  gösterilen nokta sayısı ile sayı tutarlı
+function DiceFace({ n }) {
+  const dots = {
+    1: [[50,50]],
+    2: [[25,25],[75,75]],
+    3: [[25,25],[50,50],[75,75]],
+    4: [[25,25],[75,25],[25,75],[75,75]],
+    5: [[25,25],[75,25],[50,50],[25,75],[75,75]],
+    6: [[25,22],[75,22],[25,50],[75,50],[25,78],[75,78]],
+  };
+  return <svg width="90" height="90" viewBox="0 0 100 100">
+    <rect x="5" y="5" width="90" height="90" rx="16" fill="white" stroke="#ddd" strokeWidth="2"/>
+    {(dots[n]||dots[1]).map(([cx,cy],i)=>(
+      <circle key={i} cx={cx} cy={cy} r="8" fill="#2D2D2D"/>
+    ))}
+  </svg>;
+}
+
 function CompassModal({ onSpin, onClose, movement }) {
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState(null);
@@ -668,16 +1097,44 @@ function CompassModal({ onSpin, onClose, movement }) {
     setTimeout(()=>{ setResult(Math.floor(Math.random()*6)+1); setSpinning(false); },1200);
   };
   return <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:100 }}>
-    <div style={{ background:T.bg, borderRadius:"24px 24px 0 0", padding:"28px 24px 40px", width:"100%", maxWidth:390, textAlign:"center" }}>
-      <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.dark, marginBottom:6 }}>{movement==="compass"?"🧭 Pusula Çevir!":"🎲 Zar At!"}</div>
-      <div style={{ fontSize:80, marginBottom:16, display:"inline-block", animation:spinning?"spin 0.3s linear infinite":"none" }}>{movement==="compass"?"🧭":"🎲"}</div>
-      {result&&!spinning&&<div style={{ background:`linear-gradient(135deg,${T.primary},#FF8C42)`, borderRadius:20, padding:"16px 24px", marginBottom:20 }}>
-        <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:48, color:"#fff" }}>{result}</div>
-        <div style={{ color:"rgba(255,255,255,0.9)", fontSize:14, fontWeight:700 }}>adım ilerliyorsun! 🎉</div>
-      </div>}
+    <div style={{ background:T.bg, borderRadius:"24px 24px 0 0", padding:"24px 24px 40px", width:"100%", maxWidth:390 }}>
+      {/* Başlık  -  ayrı satırda, net okunur */}
+      <div style={{ textAlign:"center", marginBottom:20 }}>
+        <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:24, color:T.dark }}>
+          {movement==="compass" ? "Pusula Çevir! 🧭" : "Zar At! 🎲"}
+        </div>
+        <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, color:T.muted, marginTop:4 }}>
+          {result ? `${result} adım ilerliyorsun!` : "Düğmeye bas ve sans dene!"}
+        </div>
+      </div>
+
+      {/* Görsel */}
+      <div style={{ display:"flex", justifyContent:"center", marginBottom:20 }}>
+        {movement==="compass" ? (
+          <div style={{ fontSize:90, animation:spinning?"spin 0.3s linear infinite":"none", display:"inline-block" }}>🧭</div>
+        ) : (
+          result && !spinning ? (
+            <DiceFace n={result}/>
+          ) : (
+            <div style={{ fontSize:90, animation:spinning?"spin 0.4s linear infinite":"none", display:"inline-block" }}>🎲</div>
+          )
+        )}
+      </div>
+
+      {/* Sonuç kutusu */}
+      {result && !spinning && (
+        <div style={{ background:`linear-gradient(135deg,${T.primary},#FF8C42)`, borderRadius:20, padding:"16px 24px", marginBottom:20, textAlign:"center" }}>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:52, color:"#fff" }}>{result}</div>
+          <div style={{ color:"rgba(255,255,255,0.9)", fontSize:15, fontWeight:700 }}>adım ilerliyorsun! 🎉</div>
+        </div>
+      )}
+
+      {/* Butonlar */}
       <div style={{ display:"flex", gap:10 }}>
         {!result ? (
-          <Btn onClick={spin} style={{ flex:1 }} disabled={spinning}>{spinning?"...":movement==="compass"?"Çevir!":"At!"}</Btn>
+          <Btn onClick={spin} style={{ flex:1 }} disabled={spinning}>
+            {spinning ? "..." : movement==="compass" ? "Çevir!" : "At!"}
+          </Btn>
         ) : (
           <Btn onClick={()=>{onSpin(result);onClose();}} style={{ flex:1 }}>Haritada İlerle →</Btn>
         )}
@@ -687,27 +1144,122 @@ function CompassModal({ onSpin, onClose, movement }) {
   </div>;
 }
 
-// ── HARİTA ────────────────────────────────────────────────────────────────────
-function MapGrid({ position }) {
-  const start = Math.max(0, position-4);
-  const squares = Array.from({length:30},(_,i)=>start+i).filter(n=>n<TOTAL);
-  return <div style={{ overflowX:"auto", paddingBottom:8 }}>
-    <div style={{ display:"grid", gridTemplateColumns:"repeat(5,52px)", gap:6, width:"fit-content", margin:"0 auto" }}>
-      {squares.map(n=>{
-        const isActive=n===position, isPast=n<position, special=SPECIAL[n];
-        const lm=LANDMARKS[n%LANDMARKS.length];
-        return <div key={n} style={{ width:52, height:52, borderRadius:12,
-          background:isActive?"linear-gradient(135deg,#FF6B35,#FF8C42)":isPast?"linear-gradient(135deg,#c8a97a,#b8905a)":"linear-gradient(135deg,#f5e6d0,#eedcb8)",
-          border:isActive?"3px solid #FF6B35":special?"2px dashed #C0392B":"2px solid #d4b896",
-          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", position:"relative",
-          boxShadow:isActive?"0 4px 16px rgba(255,107,53,0.4)":"0 2px 6px rgba(0,0,0,0.08)" }}>
-          {isActive?<div style={{ fontSize:26, animation:"bounce 1s infinite" }}>🧭</div>
-           :special==="surprise"?<div style={{ fontSize:22 }}>🎁</div>
-           :special==="mini-game"?<div style={{ fontSize:22 }}>⚡</div>
-           :<div style={{ fontSize:isPast?18:16, opacity:isPast?1:0.6 }}>{lm}</div>}
-          <div style={{ position:"absolute", bottom:2, right:4, fontSize:9, fontFamily:"'Nunito',sans-serif", fontWeight:800, color:isActive?"#fff":isPast?"#7a5a2a":"#b09060", opacity:0.8 }}>{n+1}</div>
-        </div>;
-      })}
+// ── ROZET KAZANMA MODALI ──────────────────────────────────────────────────────
+function BadgeModal({ badge, onClose }) {
+  return <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:200, padding:24 }}>
+    <div style={{ background:"linear-gradient(135deg,#1a0533,#3d0d6e)", borderRadius:28, padding:"36px 28px", width:"100%", maxWidth:340, textAlign:"center", border:"2px solid rgba(255,215,0,0.4)" }}>
+      <div style={{ fontSize:80, marginBottom:8, animation:"bounce 0.6s ease" }}>{badge.emoji}</div>
+      <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:14, color:"#FFD700", marginBottom:6, letterSpacing:1 }}>ROZET KAZANDIN!</div>
+      <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:24, color:"#fff", marginBottom:8 }}>{badge.name}</div>
+      <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:15, color:"rgba(255,255,255,0.8)", marginBottom:28 }}>{badge.desc}</div>
+      <button onClick={onClose} style={{ width:"100%", padding:"14px", borderRadius:16, border:"none", background:"linear-gradient(135deg,#FFD700,#FFA500)", color:"#1a0533", fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, cursor:"pointer" }}>
+        Harika! 🎉
+      </button>
+    </div>
+  </div>;
+}
+
+// ── HARİTA (çok kullanıcı, zoom, tam kaydırma) ────────────────────────────────
+function MapGrid({ positions, myKey, members, mapThemeId }) {
+  const [zoom, setZoom] = useState(1); // 1 = normal, 0.6 = küçük (tüm harita)
+  const CELL = zoom === 1 ? 52 : 32;
+  const GAP  = zoom === 1 ? 6  : 4;
+  const COLS = 10; // her satırda 10 kare
+
+  // Tüm üyelerin konumları
+  const memberPositions = {}; // {squareNo: [member, ...]}
+  Object.entries(positions||{}).forEach(([key, pos])=>{
+    if(!memberPositions[pos]) memberPositions[pos] = [];
+    const m = members.find(m=>m.id===key);
+    if(m) memberPositions[pos].push(m);
+  });
+
+  const myPos = positions?.[myKey] ?? 0;
+  const badges = THEME_BADGES[mapThemeId] || THEME_BADGES.anatolia;
+
+  return <div>
+    {/* Zoom kontrol */}
+    <div style={{ display:"flex", gap:8, marginBottom:10, justifyContent:"flex-end" }}>
+      <button onClick={()=>setZoom(1)} style={{ background:zoom===1?T.primary:"#F0E8DC", border:"none", borderRadius:99, padding:"6px 14px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:zoom===1?"#fff":T.muted, cursor:"pointer" }}>Normal</button>
+      <button onClick={()=>setZoom(0.6)} style={{ background:zoom===0.6?T.primary:"#F0E8DC", border:"none", borderRadius:99, padding:"6px 14px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:zoom===0.6?"#fff":T.muted, cursor:"pointer" }}>Tümü</button>
+    </div>
+
+    {/* Harita grid */}
+    <div style={{ overflowX:"auto", overflowY:"auto", maxHeight: zoom===1 ? 320 : 480, borderRadius:16, border:"2px solid #E8DDD0" }}>
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(${COLS},${CELL}px)`, gap:GAP, padding:GAP, width:"fit-content" }}>
+        {Array.from({length:TOTAL},(_,n)=>{
+          const isMyPos = n === myPos;
+          const special = SPECIAL[n];
+          const isBadge = BADGE_SQUARES.includes(n+1);
+          const badge = isBadge ? badges[BADGE_SQUARES.indexOf(n+1)] : null;
+          const membersHere = memberPositions[n] || [];
+          const lm = LANDMARKS[n % LANDMARKS.length];
+
+          return <div key={n} style={{
+            width:CELL, height:CELL, borderRadius: zoom===1?12:8,
+            background: isMyPos
+              ? "linear-gradient(135deg,#FF6B35,#FF8C42)"
+              : membersHere.length > 0
+                ? "linear-gradient(135deg,#4ECDC4,#38b2aa)"
+                : special==="surprise"
+                  ? "linear-gradient(135deg,#fff3e0,#ffe0b2)"
+                  : special==="mini-game"
+                    ? "linear-gradient(135deg,#e8f5e9,#c8e6c9)"
+                    : isBadge
+                      ? "linear-gradient(135deg,#f3e8ff,#e0c8ff)"
+                      : n < myPos
+                        ? "linear-gradient(135deg,#c8a97a,#b8905a)"
+                        : "linear-gradient(135deg,#f5e6d0,#eedcb8)",
+            border: isMyPos ? "2.5px solid #FF6B35"
+              : membersHere.length > 0 ? "2px solid #4ECDC4"
+              : special ? "2px dashed #C0392B"
+              : isBadge ? "2px solid #A855F7"
+              : "1.5px solid #d4b896",
+            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+            position:"relative", flexShrink:0,
+            boxShadow: isMyPos ? "0 3px 10px rgba(255,107,53,0.4)" : "none",
+          }}>
+            {/* İçerik */}
+            {isMyPos ? (
+              <div style={{ fontSize:zoom===1?20:12, animation:"bounce 1s infinite" }}>🧭</div>
+            ) : membersHere.length > 0 ? (
+              <div style={{ fontSize:zoom===1?16:10 }}>{membersHere[0].emoji}</div>
+            ) : special==="surprise" ? (
+              <div style={{ fontSize:zoom===1?18:11 }}>🎁</div>
+            ) : special==="mini-game" ? (
+              <div style={{ fontSize:zoom===1?18:11 }}>⚡</div>
+            ) : isBadge ? (
+              <div style={{ fontSize:zoom===1?18:11 }}>{badge?.emoji}</div>
+            ) : (
+              <div style={{ fontSize:zoom===1?14:9, opacity: n<myPos?1:0.55 }}>{lm}</div>
+            )}
+
+            {/* Kare numarası */}
+            <div style={{ position:"absolute", bottom:1, right:2, fontSize:zoom===1?8:5, fontFamily:"'Nunito',sans-serif", fontWeight:800, color:isMyPos?"#fff": n<myPos?"#7a5a2a":"#b09060", opacity:0.8 }}>{n+1}</div>
+
+            {/* Birden fazla üye aynı karede */}
+            {membersHere.length > 1 && (
+              <div style={{ position:"absolute", top:1, right:2, fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:zoom===1?8:6, color:"#fff", background:"#FF6B35", borderRadius:99, padding:"0 3px" }}>{membersHere.length}</div>
+            )}
+          </div>;
+        })}
+      </div>
+    </div>
+
+    {/* Legend */}
+    <div style={{ display:"flex", gap:8, marginTop:10, flexWrap:"wrap" }}>
+      {[
+        {color:"linear-gradient(135deg,#FF6B35,#FF8C42)", label:"Sen"},
+        {color:"linear-gradient(135deg,#4ECDC4,#38b2aa)", label:"Diğerleri"},
+        {color:"linear-gradient(135deg,#fff3e0,#ffe0b2)", label:"🎁 Sürpriz"},
+        {color:"linear-gradient(135deg,#e8f5e9,#c8e6c9)", label:"⚡ Mini Oyun"},
+        {color:"linear-gradient(135deg,#f3e8ff,#e0c8ff)", label:"🏅 Rozet"},
+      ].map((l,i)=>(
+        <div key={i} style={{ display:"flex", alignItems:"center", gap:4 }}>
+          <div style={{ width:14, height:14, borderRadius:4, background:l.color, flexShrink:0 }}/>
+          <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:T.muted }}>{l.label}</span>
+        </div>
+      ))}
     </div>
   </div>;
 }
@@ -733,7 +1285,7 @@ function TaskCard({ task, onToggle, onRemove }) {
 
 // ── ANA EKRAN ─────────────────────────────────────────────────────────────────
 function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGlobalState, onSwitchUser, onNewSeason }) {
-  const { position, tasks, memberRights, memberDone } = globalState;
+  const { positions, tasks, memberRights, memberDone, earnedBadges } = globalState;
   const setTasks = v => setGlobalState(s=>({...s, tasks:typeof v==="function"?v(s.tasks):v}));
   const addTask = task => { if(tasks.find(t=>t.id===task.id)) return; setTasks(ts=>[...ts,{...task,done:false}]); };
   const removeTask = id => setTasks(ts=>ts.filter(t=>t.id!==id));
@@ -743,20 +1295,30 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
   const myOwner = activeUser?.ownerKey||"parent";
   const myRights = memberRights?.[myKey]||0;
   const myDone = memberDone?.[myKey]||false;
+  const myPosition = positions?.[myKey]||0;
   const myTasks = tasks.filter(t=>t.owner===myOwner||t.owner==="family");
   const myDoneCount = myTasks.filter(t=>t.done).length;
   const myAllDone = myTasks.length>0&&myDoneCount===myTasks.length;
+
+  // Tüm aile üyeleri listesi (header'da göstermek için)
+  const allMembers = [
+    {id:"parent", emoji:AVATARS.find(a=>a.id===data.avatar)?.emoji||"👩", name:data.name||"Ebeveyn", ownerKey:"parent"},
+    ...((data.children||[]).map((c,i)=>({id:`child_${i}`, emoji:AVATARS.find(a=>a.id===c.avatar)?.emoji||"👧", name:c.name, ownerKey:"child"}))),
+    ...(data.parent2?[{id:"parent2", emoji:AVATARS.find(a=>a.id===data.parent2.avatar)?.emoji||"👨", name:data.parent2.name, ownerKey:"parent"}]:[]),
+  ];
 
   const [showCompass, setShowCompass] = useState(false);
   const [showSurprise, setShowSurprise] = useState(false);
   const [showPool, setShowPool] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const [showMiniGame, setShowMiniGame] = useState(false);
+  const [showBadge, setShowBadge] = useState(null); // badge object
   const [activeTab, setActiveTab] = useState("home");
 
-  const progressPct = Math.round((position/TOTAL)*100);
+  const progressPct = Math.round((myPosition/TOTAL)*100);
   const parentAvatar = AVATARS.find(a=>a.id===data.avatar);
   const mapTheme = MAP_THEMES.find(t=>t.id===data.mapTheme)||MAP_THEMES[0];
+  const themeBadges = THEME_BADGES[data.mapTheme]||THEME_BADGES.anatolia;
 
   const claimRight = () => {
     if(!myAllDone||myDone) return;
@@ -764,11 +1326,38 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
   };
 
   const handleSpin = steps => {
-    const newPos = Math.min(position+steps, TOTAL-1);
-    setGlobalState(s=>({...s, position:newPos, memberRights:{...s.memberRights,[myKey]:Math.max(0,(s.memberRights?.[myKey]||0)-1)}, memberDone:{...s.memberDone,[myKey]:false}, tasks:s.tasks.map(t=>({...t,done:false}))}));
+    const newPos = Math.min(myPosition+steps, TOTAL-1);
+    const newPositions = {...(positions||{}), [myKey]: newPos};
+    const myBadges = earnedBadges?.[myKey]||[];
+
+    // Rozet kontrolü  -  yeni konuma gelince rozet kazanıldı mı?
+    let earnedBadge = null;
+    const badgeIdx = BADGE_SQUARES.indexOf(newPos+1);
+    if(badgeIdx !== -1 && !myBadges.includes(badgeIdx)) {
+      earnedBadge = themeBadges[badgeIdx];
+      const newBadges = {...(earnedBadges||{}), [myKey]: [...myBadges, badgeIdx]};
+      setGlobalState(s=>({
+        ...s,
+        positions: newPositions,
+        earnedBadges: newBadges,
+        memberRights:{...s.memberRights,[myKey]:Math.max(0,(s.memberRights?.[myKey]||0)-1)},
+        memberDone:{...s.memberDone,[myKey]:false},
+        tasks:s.tasks.map(t=>({...t,done:false})),
+      }));
+    } else {
+      setGlobalState(s=>({
+        ...s,
+        positions: newPositions,
+        memberRights:{...s.memberRights,[myKey]:Math.max(0,(s.memberRights?.[myKey]||0)-1)},
+        memberDone:{...s.memberDone,[myKey]:false},
+        tasks:s.tasks.map(t=>({...t,done:false})),
+      }));
+    }
+
     if(newPos===TOTAL-1) setTimeout(()=>setShowCelebration(true),600);
     else if(SPECIAL[newPos]==="surprise") setTimeout(()=>setShowSurprise(true),400);
     else if(SPECIAL[newPos]==="mini-game") setTimeout(()=>setShowMiniGame(true),400);
+    else if(earnedBadge) setTimeout(()=>setShowBadge(earnedBadge),400);
   };
 
   return <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
@@ -783,7 +1372,7 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
           <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:"#8a6a3a", fontWeight:700 }}>{mapTheme.icon} {mapTheme.name}</div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ background:"#fff8", borderRadius:99, padding:"5px 10px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:T.dark }}>📍 {position+1}/{TOTAL}</div>
+          <div style={{ background:"#fff8", borderRadius:99, padding:"5px 10px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:T.dark }}>📍 {myPosition+1}/{TOTAL}</div>
           <div onClick={onSwitchUser} style={{ display:"flex", alignItems:"center", gap:6, background:T.primary, borderRadius:99, padding:"6px 12px", cursor:"pointer" }}>
             <span style={{ fontSize:20 }}>{activeUser?.emoji||parentAvatar?.emoji||"👩"}</span>
             <span style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:"#fff" }}>{activeUser?.name||data.name||"Ben"}</span>
@@ -796,7 +1385,7 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
       </div>
       <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
         <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:"#8a6a3a", fontWeight:700 }}>Baslangıç</span>
-        <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:"#8a6a3a", fontWeight:700 }}>%{progressPct}</span>
+        <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:"#8a6a3a", fontWeight:700 }}>%{progressPct} ({myPosition+1}. kare)</span>
         <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:"#8a6a3a", fontWeight:700 }}>Hazine 💎</span>
       </div>
     </div>
@@ -819,16 +1408,13 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
         <div style={{ background:"linear-gradient(135deg,#fff8ee,#fff0dc)", borderRadius:20, padding:"16px 18px", marginBottom:16, border:"2px solid #e8cfa0" }}>
           <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:14, color:"#8a6a3a", marginBottom:10 }}>AİLE EKİBİ</div>
           <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-            {[
-              {emoji:parentAvatar?.emoji||"👩", name:data.name||"Ebeveyn", role:"Ebeveyn", key:"parent"},
-              ...((data.children||[]).map((c,i)=>({emoji:AVATARS.find(a=>a.id===c.avatar)?.emoji||"👧", name:c.name, role:`${c.age} yas`, key:`child_${i}`}))),
-            ].map((m,i)=>(
-              <div key={i} style={{ background:"#fff", borderRadius:14, padding:"10px 12px", textAlign:"center", border:"2px solid #e8cfa0", minWidth:70 }}>
+            {allMembers.map((m,i)=>(
+              <div key={i} style={{ background:"#fff", borderRadius:14, padding:"10px 12px", textAlign:"center", border:`2px solid ${m.id===myKey?"#FF6B35":"#e8cfa0"}`, minWidth:70 }}>
                 <div style={{ fontSize:28 }}>{m.emoji}</div>
                 <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:T.dark, marginTop:2 }}>{m.name}</div>
-                <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:T.muted }}>{m.role}</div>
+                <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:T.muted }}>{(positions?.[m.id]||0)+1}. kare</div>
                 <div style={{ marginTop:4, background:"#fff3e0", borderRadius:99, padding:"2px 6px", fontSize:10, fontWeight:800, color:T.primary }}>
-                  {(memberRights?.[m.key]||0)>0?`${memberRights[m.key]}x ${data.movement==="compass"?"🧭":"🎲"}`:"Görev bekliyor"}
+                  {(memberRights?.[m.id]||0)>0?`${memberRights[m.id]}x ${data.movement==="compass"?"🧭":"🎲"}`:"Görev bekliyor"}
                 </div>
               </div>
             ))}
@@ -887,35 +1473,61 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
           <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:13, color:"rgba(255,255,255,0.8)", marginBottom:6 }}>AY SONU BÜYÜK ÖDÜL</div>
           <div style={{ fontSize:36, marginBottom:4 }}>{Object.keys(data.votes||{}).filter(k=>data.votes[k]).map(id=>REWARDS.find(r=>r.id===id)?.emoji).join(" ")||"🎬"}</div>
           <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, color:"#fff" }}>{Object.keys(data.votes||{}).filter(k=>data.votes[k]).map(id=>REWARDS.find(r=>r.id===id)?.label).join(" & ")||"Sinema Gecesi"}</div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:"rgba(255,255,255,0.7)", marginTop:4 }}>{TOTAL-position-1} kare kaldı</div>
-          <div onClick={()=>setShowCelebration(true)} style={{ marginTop:10, fontFamily:"'Nunito',sans-serif", fontSize:11, color:"rgba(255,255,255,0.4)", cursor:"pointer" }}>finale önizle</div>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:"rgba(255,255,255,0.7)", marginTop:4 }}>{TOTAL-myPosition-1} kare kaldı</div>
+          {/* Sadece ebeveyn görebilir */}
+          {activeUser?.ownerKey==="parent" && (
+            <div style={{ marginTop:12, display:"flex", gap:8, justifyContent:"center" }}>
+              <div onClick={()=>setShowCelebration(true)}
+                style={{ background:"rgba(255,255,255,0.15)", borderRadius:99, padding:"5px 14px", fontFamily:"'Nunito',sans-serif", fontSize:11, color:"rgba(255,255,255,0.7)", cursor:"pointer" }}>
+                finale önizle
+              </div>
+              <div onClick={()=>{ if(window.confirm("Sezonu sıfırlamak istediğine emin misin? Tüm ilerleme sıfırlanır.")) { setGlobalState({position:0, tasks:DEFAULT_TASKS, memberRights:{}, memberDone:{}}); }}}
+                style={{ background:"rgba(255,255,255,0.15)", borderRadius:99, padding:"5px 14px", fontFamily:"'Nunito',sans-serif", fontSize:11, color:"rgba(255,255,255,0.7)", cursor:"pointer" }}>
+                sezonu sıfırla 🔄
+              </div>
+            </div>
+          )}
         </div>
       </>}
 
       {activeTab==="map"&&<>
         <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:18, color:T.dark, marginBottom:4 }}>{mapTheme.icon} {mapTheme.name} Haritası</div>
-        <p style={{ color:T.muted, fontSize:13, marginBottom:6 }}>🧭 Konumun · 🎁 Sürpriz · ⚡ Mini Oyun</p>
-        <div onClick={()=>setShowMiniGame(true)} style={{ background:"linear-gradient(135deg,#FFE8D6,#FFD4B8)", borderRadius:14, padding:"10px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
-          <span style={{ fontSize:24 }}>⚡</span>
-          <div style={{ flex:1 }}>
-            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:T.dark }}>Mini Oyun Dene</div>
-            <div style={{ fontSize:11, color:T.muted }}>Esya Avı veya Senkronize Balon</div>
+        <p style={{ color:T.muted, fontSize:13, marginBottom:10 }}>Herkes kendi karesinde  -  tümünü görmek için "Tümü"ye bas</p>
+        {/* Test butonları */}
+        <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+          <div onClick={()=>setShowMiniGame(true)} style={{ flex:1, background:"linear-gradient(135deg,#FFE8D6,#FFD4B8)", borderRadius:14, padding:"10px 14px", display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
+            <span style={{ fontSize:22 }}>⚡</span>
+            <div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:T.dark }}>Mini Oyun</div>
+              <div style={{ fontSize:11, color:T.muted }}>5 oyun var</div>
+            </div>
           </div>
-          <span style={{ color:T.primary }}>→</span>
+          <div onClick={()=>setShowSurprise(true)} style={{ flex:1, background:"linear-gradient(135deg,#f3e8ff,#e0c8ff)", borderRadius:14, padding:"10px 14px", display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
+            <span style={{ fontSize:22 }}>🎁</span>
+            <div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:T.dark }}>Tatlı Ceza</div>
+              <div style={{ fontSize:11, color:T.muted }}>Sürpriz test</div>
+            </div>
+          </div>
         </div>
-        <MapGrid position={position}/>
+        <MapGrid
+          positions={positions||{}}
+          myKey={myKey}
+          members={allMembers}
+          mapThemeId={data.mapTheme||"anatolia"}
+        />
         <div style={{ marginTop:16, background:T.card, borderRadius:16, padding:"14px 16px", boxShadow:T.shadow }}>
-          {[
-            {label:"Mevcut kare", val:`${position+1}. kare`},
-            {label:"Kalan kare",  val:`${TOTAL-position-1} kare`},
-            {label:"İlerleme",    val:`%${progressPct}`},
-            {label:"Tahmini bitis", val:`~${Math.ceil((TOTAL-position)/4)} gün`},
-          ].map((row,i)=>(
-            <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:i<3?"1px solid #F0E8DC":"none" }}>
-              <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, color:T.muted }}>{row.label}</span>
-              <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, fontWeight:800, color:T.dark }}>{row.val}</span>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:13, color:T.primary, marginBottom:8 }}>KONUM BİLGİSİ</div>
+          {allMembers.map((m,i)=>(
+            <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:i<allMembers.length-1?"1px solid #F0E8DC":"none" }}>
+              <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, color:T.muted }}>{m.emoji} {m.name}</span>
+              <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, fontWeight:800, color:m.id===myKey?T.primary:T.dark }}>{(positions?.[m.id]||0)+1}. kare</span>
             </div>
           ))}
+          <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0 0" }}>
+            <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, color:T.muted }}>Tahmini bitisim</span>
+            <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, fontWeight:800, color:T.dark }}>~{Math.ceil((TOTAL-myPosition)/4)} gün</span>
+          </div>
         </div>
       </>}
 
@@ -990,7 +1602,28 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
               </div>
             </div>
           ))}
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, margin:"20px 0 12px" }}>Ay Özeti 📊</div>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, margin:"20px 0 12px" }}>⚙️ Ayarlar</div>
+          <div style={{ background:T.card, borderRadius:18, padding:"16px 18px", boxShadow:T.shadow, marginBottom:16 }}>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, color:T.dark, marginBottom:12 }}>İlerleme Yöntemi</div>
+            <div style={{ display:"flex", gap:10 }}>
+              {[
+                {id:"compass", emoji:"🧭", label:"Pusula"},
+                {id:"dice",    emoji:"🎲", label:"Zar"},
+              ].map(opt=>(
+                <div key={opt.id} onClick={()=>{
+                  if(activeUser?.ownerKey!=="parent") return;
+                  const updated = {...data, movement:opt.id};
+                  set(ref(db, `families/${familyCode}`), {...updated, familyCode});
+                }}
+                  style={{ flex:1, padding:"14px 8px", borderRadius:14, textAlign:"center", cursor:activeUser?.ownerKey==="parent"?"pointer":"not-allowed", background:data.movement===opt.id?T.primary:"#F0E8DC", border:`2px solid ${data.movement===opt.id?T.primary:"transparent"}`, opacity:activeUser?.ownerKey==="parent"?1:0.6 }}>
+                  <div style={{ fontSize:28 }}>{opt.emoji}</div>
+                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:data.movement===opt.id?"#fff":T.dark, marginTop:4 }}>{opt.label}</div>
+                  {data.movement===opt.id&&<div style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:"rgba(255,255,255,0.8)", marginTop:2 }}>Aktif ✓</div>}
+                </div>
+              ))}
+            </div>
+            {activeUser?.ownerKey!=="parent"&&<p style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginTop:8, textAlign:"center" }}>Sadece ebeveyn degistirebilir</p>}
+          </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
             {[
               {emoji:"✅", label:"Toplam Görev", val:members.reduce((s,m)=>s+m.totalDone,0), color:T.secondary},
@@ -1024,7 +1657,11 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
     {showSurprise&&<SurpriseModal onClose={()=>setShowSurprise(false)}/>}
     {showPool&&<TaskPoolModal activeTasks={tasks} onAdd={addTask} onClose={()=>setShowPool(false)}/>}
     {showCelebration&&<CelebrationScreen data={data} onNewSeason={()=>{setShowCelebration(false);onNewSeason();}}/>}
-    {showMiniGame&&<MiniGameModal onClose={()=>setShowMiniGame(false)} onWin={()=>setGlobalState(s=>({...s,position:Math.min(s.position+1,TOTAL-1)}))}/>}
+    {showMiniGame&&<MiniGameModal onClose={()=>setShowMiniGame(false)} onWin={()=>{
+      const newPos = Math.min(myPosition+1, TOTAL-1);
+      setGlobalState(s=>({...s, positions:{...(s.positions||{}), [myKey]:newPos}}));
+    }}/>}
+    {showBadge&&<BadgeModal badge={showBadge} onClose={()=>setShowBadge(null)}/>}
   </div>;
 }
 
@@ -1078,9 +1715,7 @@ export default function App() {
   const [familyCode, setFamilyCode] = useState("");
   const [activeUser, setActiveUser] = useState(null);
   const [seasonNo, setSeasonNo] = useState(1);
-  const [globalState, setGlobalStateLocal] = useState({
-    position: 0, tasks: DEFAULT_TASKS, memberRights: {}, memberDone: {},
-  });
+  const [globalState, setGlobalStateLocal] = useState(DEFAULT_GAME_STATE);
 
   // Firebase'den global state oku
   useEffect(()=>{
@@ -1128,22 +1763,25 @@ export default function App() {
 
   const next = (extra) => {
     if(currentStep==="welcome") setFlow(extra||"create");
+    // Kod council bittikten sonra launch'a geçmeden önce üret
+    if(currentStep==="council" && !familyCode) {
+      const code = makeCode();
+      setFamilyCode(code);
+    }
     setStep(s=>s+1);
   };
   const back = ()=>setStep(s=>Math.max(0,s-1));
 
   const handleFinishOnboarding = async () => {
-    const code = makeCode();
-    setFamilyCode(code);
+    const code = familyCode || makeCode();
+    if(!familyCode) setFamilyCode(code);
     localStorage.setItem("lb_familyCode", code);
-    // Aile verisini Firebase'e kaydet
     await set(ref(db, `families/${code}`), {
       ...formData,
       familyCode: code,
       createdAt: Date.now(),
     });
-    // Oyun durumunu sıfırla
-    const initState = { position:0, tasks:DEFAULT_TASKS, memberRights:{}, memberDone:{} };
+    const initState = { positions:{}, tasks:DEFAULT_TASKS, memberRights:{}, memberDone:{}, earnedBadges:{} };
     await set(ref(db, `families/${code}/gameState`), initState);
     setGlobalStateLocal(initState);
     setAppState("userSelect");
@@ -1163,7 +1801,7 @@ export default function App() {
     const newFormData = {...formData, mapTheme:newThemeId};
     setFormData(newFormData);
     setSeasonNo(s=>s+1);
-    const initState = { position:0, tasks:DEFAULT_TASKS, memberRights:{}, memberDone:{} };
+    const initState = { positions:{}, tasks:DEFAULT_TASKS, memberRights:{}, memberDone:{}, earnedBadges:{} };
     setGlobalState(initState);
     await set(ref(db, `families/${familyCode}`), {...newFormData, familyCode, gameState:initState});
     setAppState("userSelect");
@@ -1216,7 +1854,7 @@ export default function App() {
       {currentStep==="mapTheme"     &&<MapThemeScreen onNext={next} onBack={back} data={formData} setData={setFormData}/>}
       {currentStep==="movement"     &&<MovementScreen onNext={next} onBack={back} data={formData} setData={setFormData}/>}
       {currentStep==="council"      &&<CouncilScreen onNext={next} onBack={back} data={formData} setData={setFormData}/>}
-      {currentStep==="launch"       &&<LaunchScreen data={formData} familyCode={familyCode||"..."} onFinish={handleFinishOnboarding}/>}
+      {currentStep==="launch"       &&<LaunchScreen data={formData} familyCode={familyCode||"..."} onFinish={handleFinishOnboarding} onBack={back}/>}
     </div></>
   );
 }
