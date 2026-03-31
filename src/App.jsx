@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "./firebase";
 import { ref, onValue, set, get } from "firebase/database";
 
@@ -569,15 +569,82 @@ function UserSelectScreen({ data, familyCode, onSelect }) {
   </div>;
 }
 
-// ── MİNİ OYUNLAR ──────────────────────────────────────────────────────────────
+// ── BOTTOM SHEET (swipe-to-close destekli) ────────────────────────────────────
+function BottomSheet({ onClose, children, maxHeight="82vh" }) {
+  const [startY, setStartY] = useState(null);
+  const [dragY, setDragY] = useState(0);
+  const sheetRef = useRef(null);
 
-// Hafıza kartı verisi
+  const onTouchStart = e => setStartY(e.touches[0].clientY);
+  const onTouchMove = e => {
+    if(startY === null) return;
+    const dy = e.touches[0].clientY - startY;
+    if(dy > 0) setDragY(dy);
+  };
+  const onTouchEnd = () => {
+    if(dragY > 80) onClose();
+    setDragY(0);
+    setStartY(null);
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:150 }}
+      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div ref={sheetRef}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        style={{ background:T.bg, borderRadius:"24px 24px 0 0", width:"100%", maxWidth:390, maxHeight, display:"flex", flexDirection:"column", transform:`translateY(${dragY}px)`, transition:dragY===0?"transform 0.2s":"none" }}>
+        {/* Drag handle */}
+        <div style={{ padding:"12px 20px 0", flexShrink:0 }}>
+          <div style={{ width:40, height:4, borderRadius:99, background:"#D0C8BE", margin:"0 auto" }}/>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+// ── MÜZİK (Web Audio API) ─────────────────────────────────────────────────────
+function useGameMusic() {
+  const ctxRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  const play = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      ctxRef.current = ctx;
+      // Neşeli çocuk melodisi - tekrarlayan döngü
+      const melody = [523,659,784,880,784,659,523,587,659,523,659,784,880,784,659,587];
+      let beat = 0;
+      const playNote = () => {
+        if(!ctxRef.current) return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = "triangle";
+        osc.frequency.value = melody[beat % melody.length];
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.18);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+        beat++;
+      };
+      playNote();
+      intervalRef.current = setInterval(playNote, 220);
+    } catch(e) {}
+  };
+
+  const stop = () => {
+    clearInterval(intervalRef.current);
+    try { if(ctxRef.current) { ctxRef.current.close(); ctxRef.current = null; } } catch(e) {}
+  };
+
+  return { play, stop };
+}
+
 const MEMORY_CARDS = [
   {id:1,emoji:"🌟"},{id:2,emoji:"🎈"},{id:3,emoji:"🦁"},{id:4,emoji:"🍕"},
   {id:5,emoji:"🚀"},{id:6,emoji:"🌈"},{id:7,emoji:"🐶"},{id:8,emoji:"🎮"},
 ];
 
-function MiniGameModal({ onClose, onWin, forceGame }) {
+function MiniGameModal({ onClose, onWin, forceGame, onGameSelect }) {
   const GAMES = [
     {id:"hunt",    emoji:"⚡", name:"Esya Avı",          desc:"60 sn evden renk avı!"},
     {id:"balloon", emoji:"🎈", name:"Senkronize Balon",  desc:"İkisi aynı anda bassın!"},
@@ -612,6 +679,7 @@ function MiniGameModal({ onClose, onWin, forceGame }) {
   const [musicOn, setMusicOn] = useState(false);
   const [frozen, setFrozen] = useState(false);
   const [freezeTimer, setFreezeTimer] = useState(10);
+  const music = useGameMusic();
 
   // Hafıza kartları
   const [cards, setCards] = useState(()=>{
@@ -636,11 +704,18 @@ function MiniGameModal({ onClose, onWin, forceGame }) {
       iv=setInterval(()=>{ s+=2; setBalloonSize(s); if(s>=200){clearInterval(iv);setPhase("lost");} },120);
     }
     if(game==="freeze"){
-      // Müzik oynuyor  -  rastgele 5-12 sn sonra dur
+      // Müzik çal, rastgele 5-12 sn sonra durdur
       const dur = (5+Math.random()*7)*1000;
+      music.play();
       setMusicOn(true);
-      const t=setTimeout(()=>{ setMusicOn(false); setFrozen(true); let c=10; iv=setInterval(()=>{ c--; setFreezeTimer(c); if(c<=0){clearInterval(iv);setPhase("won");} },1000); },dur);
-      return ()=>{ clearTimeout(t); clearInterval(iv); };
+      const t=setTimeout(()=>{
+        music.stop();
+        setMusicOn(false);
+        setFrozen(true);
+        let c=10;
+        iv=setInterval(()=>{ c--; setFreezeTimer(c); if(c<=0){clearInterval(iv);setPhase("won");} },1000);
+      },dur);
+      return ()=>{ clearTimeout(t); clearInterval(iv); music.stop(); };
     }
     return ()=>clearInterval(iv);
   },[phase,game]);
@@ -677,30 +752,30 @@ function MiniGameModal({ onClose, onWin, forceGame }) {
   const startGame = (g) => {
     setGame(g);
     setPhase("intro");
+    if(onGameSelect) onGameSelect(g); // Firebase'e yaz  -  herkes görsün
   };
 
   const gameName = GAMES.find(g=>g.id===game)?.name||"";
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:150 }}
-      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{ background:T.bg, borderRadius:"28px 28px 0 0", width:"100%", maxWidth:390, maxHeight:"90vh", display:"flex", flexDirection:"column" }}>
-
-        {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 20px 8px" }}>
-          <div style={{ width:40, height:4, borderRadius:99, background:"#D0C8BE", margin:"0 auto" }}/>
+    <BottomSheet onClose={onClose} maxHeight="88vh">
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 20px 10px", flexShrink:0, borderBottom:"1px solid #F0E8DC" }}>
+        <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:17, color:T.dark }}>
+          {phase==="select" ? "Mini Oyun Seç ⚡" : gameName}
         </div>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 20px 10px" }}>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:18, color:T.dark }}>
-            {phase==="select" ? "Mini Oyun Seç ⚡" : `${gameName}`}
-          </div>
-          <div style={{ display:"flex", gap:8 }}>
-            {phase!=="select"&&<button onClick={()=>{setPhase("select");setGame(null);setFlipped([]);setMatchCount(0);setP1(false);setP2(false);}} style={{ background:"#F0E8DC", border:"none", borderRadius:99, padding:"6px 12px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, cursor:"pointer", color:T.muted }}>← Geri</button>}
-            <button onClick={onClose} style={{ background:"#F0E8DC", border:"none", borderRadius:99, width:36, height:36, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
-          </div>
+        <div style={{ display:"flex", gap:8 }}>
+          {phase!=="select" && (
+            <button onClick={()=>{setPhase("select");setGame(null);setFlipped([]);setMatchCount(0);setP1(false);setP2(false);}}
+              style={{ background:"#F0E8DC", border:"none", borderRadius:99, padding:"6px 14px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, cursor:"pointer", color:T.muted }}>
+              ← Geri
+            </button>
+          )}
+          <button onClick={onClose} style={{ background:"#F0E8DC", border:"none", borderRadius:99, width:34, height:34, fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
         </div>
+      </div>
 
-        <div style={{ flex:1, overflowY:"auto", padding:"0 20px 40px" }}>
+      <div style={{ flex:1, overflowY:"auto", padding:"0 20px 40px" }}>
 
           {/* OYUN SEÇİM EKRANI */}
           {phase==="select" && (
@@ -881,9 +956,10 @@ function MiniGameModal({ onClose, onWin, forceGame }) {
 
         </div>
       </div>
-    </div>
+    </BottomSheet>
   );
 }
+
 // ── TATLI CEZA ────────────────────────────────────────────────────────────────
 function SurpriseModal({ onClose }) {
   const cats = Object.values(SURPRISE_POOL);
@@ -893,36 +969,41 @@ function SurpriseModal({ onClose }) {
     setSel(cat);
     setItem(cat.items[Math.floor(Math.random()*cat.items.length)]);
   };
-  return <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:100, display:"flex", flexDirection:"column", justifyContent:"flex-end" }}>
-    <div style={{ background:T.bg, borderRadius:"28px 28px 0 0", maxHeight:"88vh", display:"flex", flexDirection:"column" }}>
-      <div style={{ width:40, height:4, borderRadius:99, background:"#D0C8BE", margin:"12px auto 0" }}/>
+  return (
+    <BottomSheet onClose={onClose} maxHeight="85vh">
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 20px 10px", flexShrink:0, borderBottom:"1px solid #F0E8DC" }}>
+        <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:17, color:T.dark }}>
+          {sel ? sel.label : "Tatlı Ceza 🎁"}
+        </div>
+        <button onClick={onClose} style={{ background:"#F0E8DC", border:"none", borderRadius:99, width:34, height:34, fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+      </div>
+      <div style={{ flex:1, overflowY:"auto" }}>
       {!sel ? (
-        <div style={{ padding:"20px 22px" }}>
-          <div style={{ textAlign:"center", marginBottom:20 }}>
-            <div style={{ fontSize:56, marginBottom:6 }}>🎁</div>
-            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.dark }}>Sürpriz Kare!</div>
-            <div style={{ color:T.muted, fontSize:14, marginTop:4 }}>Bir kategori seç!</div>
+        <div style={{ padding:"16px 20px 32px" }}>
+          <div style={{ textAlign:"center", marginBottom:16 }}>
+            <div style={{ fontSize:48, marginBottom:6 }}>🎁</div>
+            <div style={{ color:T.muted, fontSize:14 }}>Bir kategori seç!</div>
           </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:12, paddingBottom:32 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             {cats.map((cat,i)=>(
               <div key={i} onClick={()=>pick(cat)}
-                style={{ background:cat.bg, borderRadius:20, padding:"18px 20px", cursor:"pointer", display:"flex", alignItems:"center", gap:14, boxShadow:T.shadow }}>
-                <div style={{ fontSize:36 }}>{cat.emoji}</div>
+                style={{ background:cat.bg, borderRadius:18, padding:"16px 18px", cursor:"pointer", display:"flex", alignItems:"center", gap:14, boxShadow:T.shadow }}>
+                <div style={{ fontSize:32 }}>{cat.emoji}</div>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark }}>{cat.label}</div>
+                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:15, color:T.dark }}>{cat.label}</div>
                   <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginTop:2 }}>{cat.items.length} farklı sürpriz</div>
                 </div>
-                <div style={{ color:cat.color, fontSize:20 }}>→</div>
+                <div style={{ color:cat.color, fontSize:18 }}>→</div>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div style={{ padding:"20px 22px", textAlign:"center", paddingBottom:32 }}>
-          <div style={{ display:"inline-block", background:sel.bg, borderRadius:99, padding:"6px 16px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:sel.color, marginBottom:16 }}>{sel.label}</div>
-          <div style={{ fontSize:80, marginBottom:12 }}>{item?.emoji}</div>
-          <div style={{ background:sel.bg, borderRadius:22, padding:"22px 18px", marginBottom:20 }}>
-            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:18, color:T.dark, lineHeight:1.4 }}>{item?.text}</div>
+        <div style={{ padding:"20px 22px 40px", textAlign:"center" }}>
+          <div style={{ fontSize:72, marginBottom:12 }}>{item?.emoji}</div>
+          <div style={{ background:sel.bg, borderRadius:20, padding:"20px 18px", marginBottom:20 }}>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:17, color:T.dark, lineHeight:1.4 }}>{item?.text}</div>
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             <Btn onClick={onClose}>Görevi Kabul Et! 🤝</Btn>
@@ -930,8 +1011,9 @@ function SurpriseModal({ onClose }) {
           </div>
         </div>
       )}
-    </div>
-  </div>;
+      </div>
+    </BottomSheet>
+  );
 }
 
 // ── KUTLAMA ───────────────────────────────────────────────────────────────────
@@ -980,24 +1062,23 @@ function TaskPoolModal({ activeTasks, onAdd, onClose }) {
     const ms = t.title.toLowerCase().includes(search.toLowerCase());
     return mc&&ms;
   });
-  return <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, display:"flex", flexDirection:"column", justifyContent:"flex-end" }}>
-    <div style={{ background:T.bg, borderRadius:"24px 24px 0 0", maxHeight:"88vh", display:"flex", flexDirection:"column" }}>
-      <div style={{ width:40, height:4, borderRadius:99, background:"#D0C8BE", margin:"12px auto 0" }}/>
-      <div style={{ padding:"16px 20px 0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+  return <BottomSheet onClose={onClose} maxHeight="88vh">
+      {/* Header */}
+      <div style={{ padding:"12px 20px 10px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0, borderBottom:"1px solid #F0E8DC" }}>
         <div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:20, color:T.dark }}>Görev Havuzu</div>
-          <div style={{ color:T.muted, fontSize:13, marginTop:2 }}>{TASK_POOL.length} hazır görev</div>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:18, color:T.dark }}>Görev Havuzu</div>
+          <div style={{ color:T.muted, fontSize:12, marginTop:1 }}>{TASK_POOL.length} hazır görev</div>
         </div>
-        <button onClick={onClose} style={{ background:"#F0E8DC", border:"none", borderRadius:99, width:36, height:36, fontSize:18, cursor:"pointer" }}>✕</button>
+        <button onClick={onClose} style={{ background:"#F0E8DC", border:"none", borderRadius:99, width:34, height:34, fontSize:16, cursor:"pointer" }}>✕</button>
       </div>
-      <div style={{ padding:"12px 20px 0" }}>
+      <div style={{ padding:"10px 20px 0", flexShrink:0 }}>
         <div style={{ background:T.card, borderRadius:14, border:"2px solid #E8DDD0", display:"flex", alignItems:"center", gap:10, padding:"10px 14px" }}>
           <span style={{ fontSize:18, opacity:0.5 }}>🔍</span>
           <input placeholder="Görev ara..." value={search} onChange={e=>setSearch(e.target.value)}
             style={{ border:"none", outline:"none", fontSize:15, fontFamily:"'Nunito',sans-serif", fontWeight:700, color:T.dark, flex:1, background:"transparent" }}/>
         </div>
       </div>
-      <div style={{ display:"flex", gap:8, padding:"12px 20px 0", overflowX:"auto" }}>
+      <div style={{ display:"flex", gap:8, padding:"10px 20px 0", overflowX:"auto", flexShrink:0 }}>
         {[{id:"all",label:"Tümü",emoji:"⭐",color:T.primary},{id:"child",label:"Çocuk",emoji:"👧",color:"#4ECDC4"},{id:"parent",label:"Ebeveyn",emoji:"👩",color:"#FF6B35"},{id:"family",label:"Aile",emoji:"👨‍👩‍👧",color:"#A855F7"}].map(c=>(
           <div key={c.id} onClick={()=>setCat(c.id)}
             style={{ background:cat===c.id?c.color:T.card, borderRadius:99, padding:"7px 14px", fontSize:13, fontFamily:"'Nunito',sans-serif", fontWeight:800, color:cat===c.id?"#fff":T.muted, cursor:"pointer", whiteSpace:"nowrap", border:`2px solid ${cat===c.id?c.color:"#E8DDD0"}`, flexShrink:0 }}>
@@ -1005,7 +1086,7 @@ function TaskPoolModal({ activeTasks, onAdd, onClose }) {
           </div>
         ))}
       </div>
-      <div style={{ flex:1, overflowY:"auto", padding:"12px 20px 32px" }}>
+      <div style={{ flex:1, overflowY:"auto", padding:"10px 20px 32px" }}>
         {filtered.map(task=>{
           const isActive = activeIds.includes(task.id);
           return <div key={task.id}
@@ -1022,8 +1103,7 @@ function TaskPoolModal({ activeTasks, onAdd, onClose }) {
           </div>;
         })}
       </div>
-    </div>
-  </div>;
+  </BottomSheet>;
 }
 
 // ── PUSULA / ZAR ──────────────────────────────────────────────────────────────
@@ -1117,13 +1197,13 @@ function BadgeModal({ badge, onClose }) {
 
 // ── HARİTA (çok kullanıcı, zoom, tam kaydırma) ────────────────────────────────
 function MapGrid({ positions, myKey, members, mapThemeId }) {
-  const [zoom, setZoom] = useState(1); // 1 = normal, 0.6 = küçük (tüm harita)
+  const [zoom, setZoom] = useState(1);
   const CELL = zoom === 1 ? 52 : 32;
   const GAP  = zoom === 1 ? 6  : 4;
-  const COLS = 10; // her satırda 10 kare
+  const COLS = 10;
 
-  // Tüm üyelerin konumları
-  const memberPositions = {}; // {squareNo: [member, ...]}
+  // Her karedeki üyeler
+  const memberPositions = {};
   Object.entries(positions||{}).forEach(([key, pos])=>{
     if(!memberPositions[pos]) memberPositions[pos] = [];
     const m = members.find(m=>m.id===key);
@@ -1133,14 +1213,15 @@ function MapGrid({ positions, myKey, members, mapThemeId }) {
   const myPos = positions?.[myKey] ?? 0;
   const badges = THEME_BADGES[mapThemeId] || THEME_BADGES.anatolia;
 
+  // Benim avatarım
+  const me = members.find(m=>m.id===myKey);
+
   return <div>
-    {/* Zoom kontrol */}
     <div style={{ display:"flex", gap:8, marginBottom:10, justifyContent:"flex-end" }}>
       <button onClick={()=>setZoom(1)} style={{ background:zoom===1?T.primary:"#F0E8DC", border:"none", borderRadius:99, padding:"6px 14px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:zoom===1?"#fff":T.muted, cursor:"pointer" }}>Normal</button>
       <button onClick={()=>setZoom(0.6)} style={{ background:zoom===0.6?T.primary:"#F0E8DC", border:"none", borderRadius:99, padding:"6px 14px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:12, color:zoom===0.6?"#fff":T.muted, cursor:"pointer" }}>Tümü</button>
     </div>
 
-    {/* Harita grid */}
     <div style={{ overflowX:"auto", overflowY:"auto", maxHeight: zoom===1 ? 320 : 480, borderRadius:16, border:"2px solid #E8DDD0" }}>
       <div style={{ display:"grid", gridTemplateColumns:`repeat(${COLS},${CELL}px)`, gap:GAP, padding:GAP, width:"fit-content" }}>
         {Array.from({length:TOTAL},(_,n)=>{
@@ -1149,14 +1230,16 @@ function MapGrid({ positions, myKey, members, mapThemeId }) {
           const isBadge = BADGE_SQUARES.includes(n+1);
           const badge = isBadge ? badges[BADGE_SQUARES.indexOf(n+1)] : null;
           const membersHere = memberPositions[n] || [];
+          const othersHere = membersHere.filter(m=>m.id!==myKey);
           const lm = LANDMARKS[n % LANDMARKS.length];
+          const anyoneHere = membersHere.length > 0;
 
           return <div key={n} style={{
             width:CELL, height:CELL, borderRadius: zoom===1?12:8,
             background: isMyPos
               ? "linear-gradient(135deg,#FF6B35,#FF8C42)"
-              : membersHere.length > 0
-                ? "linear-gradient(135deg,#4ECDC4,#38b2aa)"
+              : anyoneHere
+                ? "linear-gradient(135deg,#e8f5ff,#c5e8ff)"
                 : special==="surprise"
                   ? "linear-gradient(135deg,#fff3e0,#ffe0b2)"
                   : special==="mini-game"
@@ -1167,19 +1250,20 @@ function MapGrid({ positions, myKey, members, mapThemeId }) {
                         ? "linear-gradient(135deg,#c8a97a,#b8905a)"
                         : "linear-gradient(135deg,#f5e6d0,#eedcb8)",
             border: isMyPos ? "2.5px solid #FF6B35"
-              : membersHere.length > 0 ? "2px solid #4ECDC4"
+              : anyoneHere ? "2px solid #5BB8F5"
               : special ? "2px dashed #C0392B"
               : isBadge ? "2px solid #A855F7"
               : "1.5px solid #d4b896",
             display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
             position:"relative", flexShrink:0,
-            boxShadow: isMyPos ? "0 3px 10px rgba(255,107,53,0.4)" : "none",
+            boxShadow: isMyPos ? "0 3px 12px rgba(255,107,53,0.5)" : anyoneHere ? "0 2px 8px rgba(91,184,245,0.4)" : "none",
           }}>
-            {/* İçerik */}
+            {/* Benim avatarım  -  animasyonlu */}
             {isMyPos ? (
-              <div style={{ fontSize:zoom===1?20:12, animation:"bounce 1s infinite" }}>🧭</div>
-            ) : membersHere.length > 0 ? (
-              <div style={{ fontSize:zoom===1?16:10 }}>{membersHere[0].emoji}</div>
+              <div style={{ fontSize:zoom===1?22:14, animation:"bounce 1s infinite", lineHeight:1 }}>{me?.emoji||"🧭"}</div>
+            ) : othersHere.length > 0 ? (
+              // Başka biri bu karede
+              <div style={{ fontSize:zoom===1?18:11, lineHeight:1 }}>{othersHere[0].emoji}</div>
             ) : special==="surprise" ? (
               <div style={{ fontSize:zoom===1?18:11 }}>🎁</div>
             ) : special==="mini-game" ? (
@@ -1190,32 +1274,39 @@ function MapGrid({ positions, myKey, members, mapThemeId }) {
               <div style={{ fontSize:zoom===1?14:9, opacity: n<myPos?1:0.55 }}>{lm}</div>
             )}
 
-            {/* Kare numarası */}
+            {/* Kare no */}
             <div style={{ position:"absolute", bottom:1, right:2, fontSize:zoom===1?8:5, fontFamily:"'Nunito',sans-serif", fontWeight:800, color:isMyPos?"#fff": n<myPos?"#7a5a2a":"#b09060", opacity:0.8 }}>{n+1}</div>
 
-            {/* Birden fazla üye aynı karede */}
-            {membersHere.length > 1 && (
-              <div style={{ position:"absolute", top:1, right:2, fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:zoom===1?8:6, color:"#fff", background:"#FF6B35", borderRadius:99, padding:"0 3px" }}>{membersHere.length}</div>
+            {/* Hem ben hem başkası aynı karede */}
+            {isMyPos && othersHere.length > 0 && (
+              <div style={{ position:"absolute", top:1, left:2, fontSize:zoom===1?9:6 }}>{othersHere[0].emoji}</div>
+            )}
+            {/* Birden fazla başkası */}
+            {!isMyPos && membersHere.length > 1 && (
+              <div style={{ position:"absolute", top:1, right:2, fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:zoom===1?8:6, color:"#fff", background:"#5BB8F5", borderRadius:99, padding:"0 3px" }}>{membersHere.length}</div>
             )}
           </div>;
         })}
       </div>
     </div>
 
-    {/* Legend */}
-    <div style={{ display:"flex", gap:8, marginTop:10, flexWrap:"wrap" }}>
-      {[
-        {color:"linear-gradient(135deg,#FF6B35,#FF8C42)", label:"Sen"},
-        {color:"linear-gradient(135deg,#4ECDC4,#38b2aa)", label:"Diğerleri"},
-        {color:"linear-gradient(135deg,#fff3e0,#ffe0b2)", label:"🎁 Sürpriz"},
-        {color:"linear-gradient(135deg,#e8f5e9,#c8e6c9)", label:"⚡ Mini Oyun"},
-        {color:"linear-gradient(135deg,#f3e8ff,#e0c8ff)", label:"🏅 Rozet"},
-      ].map((l,i)=>(
-        <div key={i} style={{ display:"flex", alignItems:"center", gap:4 }}>
-          <div style={{ width:14, height:14, borderRadius:4, background:l.color, flexShrink:0 }}/>
-          <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:T.muted }}>{l.label}</span>
+    {/* Legend  -  üyeleri göster */}
+    <div style={{ display:"flex", gap:8, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
+      {members.map((m,i)=>(
+        <div key={i} style={{ display:"flex", alignItems:"center", gap:4, background:m.id===myKey?"#FFF3E0":"#F0F0F0", borderRadius:99, padding:"3px 8px", border:`1px solid ${m.id===myKey?T.primary:"#E0E0E0"}` }}>
+          <span style={{ fontSize:14 }}>{m.emoji}</span>
+          <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:T.dark, fontWeight:700 }}>{m.name}</span>
+          <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:T.muted }}>{(positions?.[m.id]||0)+1}. kare</span>
         </div>
       ))}
+      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+        <div style={{ width:12, height:12, borderRadius:3, background:"linear-gradient(135deg,#fff3e0,#ffe0b2)", border:"1px solid #C0392B", flexShrink:0 }}/>
+        <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:T.muted }}>🎁 Sürpriz</span>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+        <div style={{ width:12, height:12, borderRadius:3, background:"linear-gradient(135deg,#f3e8ff,#e0c8ff)", border:"1px solid #A855F7", flexShrink:0 }}/>
+        <span style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:T.muted }}>🏅 Rozet</span>
+      </div>
     </div>
   </div>;
 }
@@ -1268,8 +1359,45 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
   const [showPool, setShowPool] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const [showMiniGame, setShowMiniGame] = useState(false);
-  const [showBadge, setShowBadge] = useState(null); // badge object
+  const [activeMiniGameId, setActiveMiniGameId] = useState(null); // Firebase'den gelen oyun
+  const [showBadge, setShowBadge] = useState(null);
   const [activeTab, setActiveTab] = useState("home");
+  const [miniGameBanner, setMiniGameBanner] = useState(null); // "Baba mini oyun başlattı!"
+
+  // Firebase'den aktif mini oyun dinle
+  useEffect(()=>{
+    if(!familyCode) return;
+    const mgRef = ref(db, `families/${familyCode}/activeMiniGame`);
+    const unsub = onValue(mgRef, snap=>{
+      const val = snap.val();
+      if(val && val.startedBy !== myKey) {
+        // Başkası başlattı  -  banner göster
+        const starter = allMembers.find(m=>m.id===val.startedBy);
+        setMiniGameBanner(`${starter?.emoji||"⚡"} ${starter?.name||"Birisi"} mini oyun başlattı!`);
+        setTimeout(()=>setMiniGameBanner(null), 4000);
+        setActiveMiniGameId(val.gameId);
+        setShowMiniGame(true);
+      } else if(!val) {
+        // Oyun bitti
+        setActiveMiniGameId(null);
+      }
+    });
+    return ()=>unsub();
+  },[familyCode, myKey]);
+
+  // Mini oyun başlat  -  Firebase'e yaz, herkes görsün
+  const startOnlineMiniGame = (gameId) => {
+    setActiveMiniGameId(gameId);
+    setShowMiniGame(true);
+    set(ref(db, `families/${familyCode}/activeMiniGame`), { gameId, startedBy: myKey, startedAt: Date.now() });
+  };
+
+  // Mini oyun kapat  -  Firebase'i temizle
+  const closeMiniGame = () => {
+    setShowMiniGame(false);
+    setActiveMiniGameId(null);
+    set(ref(db, `families/${familyCode}/activeMiniGame`), null);
+  };
 
   const progressPct = Math.round((myPosition/TOTAL)*100);
   const parentAvatar = AVATARS.find(a=>a.id===data.avatar);
@@ -1580,12 +1708,13 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
             </div>
             {activeUser?.ownerKey!=="parent"&&<p style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginTop:8, textAlign:"center" }}>Sadece ebeveyn degistirebilir</p>}
           </div>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, margin:"20px 0 12px" }}>Ay Özeti 📊</div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
             {[
               {emoji:"✅", label:"Toplam Görev", val:members.reduce((s,m)=>s+m.totalDone,0), color:T.secondary},
-              {emoji:"📍", label:"Harita Konumu", val:`${position+1}. kare`, color:T.primary},
+              {emoji:"📍", label:"Harita Konumum", val:`${myPosition+1}. kare`, color:T.primary},
               {emoji:"🔥", label:"En Uzun Seri",  val:`${Math.max(...members.map(m=>m.streak))} gün`, color:"#F97316"},
-              {emoji:"⏳", label:"Kalan Kare",    val:TOTAL-position-1, color:"#A855F7"},
+              {emoji:"⏳", label:"Kalan Kare",    val:TOTAL-myPosition-1, color:"#A855F7"},
             ].map((s,i)=>(
               <div key={i} style={{ background:T.card, borderRadius:16, padding:"14px 12px", textAlign:"center", boxShadow:T.shadow, border:`2px solid ${s.color}22` }}>
                 <div style={{ fontSize:28, marginBottom:4 }}>{s.emoji}</div>
@@ -1608,15 +1737,28 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
       ))}
     </div>
 
+    {/* Mini oyun banner bildirimi */}
+    {miniGameBanner && (
+      <div style={{ position:"fixed", top:80, left:"50%", transform:"translateX(-50%)", zIndex:400, background:"linear-gradient(135deg,#FF6B35,#FF8C42)", borderRadius:16, padding:"12px 20px", boxShadow:"0 8px 24px rgba(255,107,53,0.4)", maxWidth:340, width:"90%" }}>
+        <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:14, color:"#fff", textAlign:"center" }}>⚡ {miniGameBanner}</div>
+        <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:"rgba(255,255,255,0.85)", textAlign:"center", marginTop:2 }}>Mini oyun ekranı açılıyor...</div>
+      </div>
+    )}
+
     {/* Modals */}
     {showCompass&&<CompassModal movement={data.movement} onSpin={handleSpin} onClose={()=>setShowCompass(false)}/>}
     {showSurprise&&<SurpriseModal onClose={()=>setShowSurprise(false)}/>}
     {showPool&&<TaskPoolModal activeTasks={tasks} onAdd={addTask} onClose={()=>setShowPool(false)}/>}
     {showCelebration&&<CelebrationScreen data={data} onNewSeason={()=>{setShowCelebration(false);onNewSeason();}}/>}
-    {showMiniGame&&<MiniGameModal onClose={()=>setShowMiniGame(false)} onWin={()=>{
-      const newPos = Math.min(myPosition+1, TOTAL-1);
-      setGlobalState(s=>({...s, positions:{...(s.positions||{}), [myKey]:newPos}}));
-    }}/>}
+    {showMiniGame&&<MiniGameModal
+      forceGame={activeMiniGameId}
+      onClose={closeMiniGame}
+      onGameSelect={startOnlineMiniGame}
+      onWin={()=>{
+        const newPos = Math.min(myPosition+1, TOTAL-1);
+        setGlobalState(s=>({...s, positions:{...(s.positions||{}), [myKey]:newPos}}));
+      }}
+    />}
     {showBadge&&<BadgeModal badge={showBadge} onClose={()=>setShowBadge(null)}/>}
   </div>;
 }
