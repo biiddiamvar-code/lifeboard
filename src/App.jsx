@@ -961,7 +961,6 @@ function MiniGameModal({ onClose, onWin, forceGame, onGameSelect }) {
           </>}
 
         </div>
-      </div>
     </BottomSheet>
   );
 }
