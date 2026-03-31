@@ -704,18 +704,11 @@ function MiniGameModal({ onClose, onWin, forceGame, onGameSelect }) {
       iv=setInterval(()=>{ s+=2; setBalloonSize(s); if(s>=200){clearInterval(iv);setPhase("lost");} },120);
     }
     if(game==="freeze"){
-      // Müzik çal, rastgele 5-12 sn sonra durdur
-      const dur = (5+Math.random()*7)*1000;
-      music.play();
-      setMusicOn(true);
-      const t=setTimeout(()=>{
-        music.stop();
-        setMusicOn(false);
-        setFrozen(true);
-        let c=10;
-        iv=setInterval(()=>{ c--; setFreezeTimer(c); if(c<=0){clearInterval(iv);setPhase("won");} },1000);
-      },dur);
-      return ()=>{ clearTimeout(t); clearInterval(iv); music.stop(); };
+      if(!frozen) return; // frozen olunca sayaç başlar
+      // Frozen aşamasında 10 sn geri sayım
+      let c=10; setFreezeTimer(10);
+      iv=setInterval(()=>{ c--; setFreezeTimer(c); if(c<=0){clearInterval(iv);setPhase("won");} },1000);
+      return ()=>clearInterval(iv);
     }
     return ()=>clearInterval(iv);
   },[phase,game]);
@@ -862,7 +855,20 @@ function MiniGameModal({ onClose, onWin, forceGame, onGameSelect }) {
               <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:16, color:T.dark, marginBottom:8 }}>Don-Ates Müzikali!</div>
               <div style={{ color:T.muted, fontSize:14, marginBottom:8, lineHeight:1.6 }}>Müzik çalarken herkes dans eder. Müzik durduğunda ekranda <b>"HEYKEL OL!"</b> yazar.</div>
               <div style={{ color:T.muted, fontSize:14, marginBottom:24 }}>10 saniye boyunca donup kalın. Kıpırdayan tatlı ceza alır!</div>
-              <Btn onClick={()=>setPhase("playing")}>Basla! 💃</Btn>
+              <Btn onClick={()=>{
+                // Kullanıcı tıklaması ile müzik başlat (tarayıcı politikası)
+                music.play();
+                setMusicOn(true);
+                setFrozen(false);
+                setPhase("playing");
+                // Rastgele 5-12 sn sonra müzik dur
+                const dur = (5 + Math.random()*7)*1000;
+                setTimeout(()=>{
+                  music.stop();
+                  setMusicOn(false);
+                  setFrozen(true);
+                }, dur);
+              }}>Basla! 💃</Btn>
             </div>}
             {phase==="playing"&&<div style={{ textAlign:"center", paddingTop:10 }}>
               {!frozen ? (
@@ -1330,6 +1336,95 @@ function TaskCard({ task, onToggle, onRemove }) {
   </div>;
 }
 
+// ── PROFİL SEKMESİ ────────────────────────────────────────────────────────────
+function ProfileTab({ data, activeUser, familyCode, myPosition, positions, parentAvatar }) {
+  const members = [
+    { emoji:parentAvatar?.emoji||"👩", name:data.name||"Ebeveyn", role:"Ebeveyn", key:"parent", totalDone:42, streak:7, badges:["🏆","⭐","🔥"] },
+    ...((data.children||[]).map((c,i)=>({
+      emoji: AVATARS.find(a=>a.id===c.avatar)?.emoji||"👧",
+      name: c.name, role:`${c.age} yas`, key:`child_${i}`,
+      totalDone:[28,35,19][i]||24, streak:[5,9,3][i]||4,
+      badges:[["🌟","📚"],["🚀","🎯"],["🌱"]][i]||["🌟"],
+    }))),
+  ];
+  const sorted = [...members].sort((a,b)=>b.totalDone-a.totalDone);
+  const maxDone = sorted[0]?.totalDone||1;
+  const medals = ["🥇","🥈","🥉","🎖️"];
+  const barColors = [
+    "linear-gradient(90deg,#FFD700,#FFA500)",
+    "linear-gradient(90deg,#C0C0C0,#A0A0A0)",
+    "linear-gradient(90deg,#CD7F32,#A0522D)",
+    "linear-gradient(90deg,#A855F7,#7C3AED)",
+  ];
+  const isParent = activeUser?.ownerKey==="parent";
+
+  return <>
+    <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:18, color:T.dark, marginBottom:4 }}>Skor Tablosu 🏆</div>
+    <p style={{ color:T.muted, fontSize:13, marginBottom:16 }}>Bu ay kim kaç görev tamamladı?</p>
+    {sorted.map((m,i)=>(
+      <div key={i} style={{ background:i===0?"linear-gradient(135deg,#fff8e1,#fff3cc)":T.card, borderRadius:18, padding:"14px 16px", marginBottom:10, border:`2px solid ${i===0?"#FFD700":"#E8DDD0"}`, boxShadow:T.shadow }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+          <div style={{ fontSize:28 }}>{medals[i]}</div>
+          <div style={{ fontSize:32 }}>{m.emoji}</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:15, color:T.dark }}>{m.name}</div>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted }}>{m.role}</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.primary }}>{m.totalDone}</div>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:T.muted, fontWeight:700 }}>GÖREV</div>
+          </div>
+        </div>
+        <div style={{ background:"#F0E8DC", borderRadius:99, height:8, overflow:"hidden", marginBottom:8 }}>
+          <div style={{ height:"100%", width:`${(m.totalDone/maxDone)*100}%`, background:barColors[i], borderRadius:99 }}/>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ display:"flex", gap:4 }}>{m.badges.map((b,j)=><span key={j} style={{ fontSize:18 }}>{b}</span>)}</div>
+          <div style={{ background:"#FFF3E0", borderRadius:99, padding:"3px 10px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:11, color:T.primary }}>🔥 {m.streak} gün seri</div>
+        </div>
+      </div>
+    ))}
+
+    {/* Ayarlar */}
+    <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, margin:"20px 0 12px" }}>⚙️ Ayarlar</div>
+    <div style={{ background:T.card, borderRadius:18, padding:"16px 18px", boxShadow:T.shadow, marginBottom:16 }}>
+      <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, color:T.dark, marginBottom:12 }}>İlerleme Yöntemi</div>
+      <div style={{ display:"flex", gap:10 }}>
+        {[{id:"compass",emoji:"🧭",label:"Pusula"},{id:"dice",emoji:"🎲",label:"Zar"}].map(opt=>(
+          <div key={opt.id} onClick={()=>{
+            if(!isParent) return;
+            const updated = {...data, movement:opt.id};
+            set(ref(db, `families/${familyCode}`), {...updated, familyCode});
+          }}
+            style={{ flex:1, padding:"14px 8px", borderRadius:14, textAlign:"center", cursor:isParent?"pointer":"not-allowed", background:data.movement===opt.id?T.primary:"#F0E8DC", border:`2px solid ${data.movement===opt.id?T.primary:"transparent"}`, opacity:isParent?1:0.6 }}>
+            <div style={{ fontSize:28 }}>{opt.emoji}</div>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:data.movement===opt.id?"#fff":T.dark, marginTop:4 }}>{opt.label}</div>
+            {data.movement===opt.id&&<div style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:"rgba(255,255,255,0.8)", marginTop:2 }}>Aktif ✓</div>}
+          </div>
+        ))}
+      </div>
+      {!isParent&&<p style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginTop:8, textAlign:"center" }}>Sadece ebeveyn degistirebilir</p>}
+    </div>
+
+    {/* Ay özeti */}
+    <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, margin:"8px 0 12px" }}>Ay Özeti 📊</div>
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:32 }}>
+      {[
+        {emoji:"✅", label:"Toplam Görev", val:members.reduce((s,m)=>s+m.totalDone,0), color:T.secondary},
+        {emoji:"📍", label:"Konumum", val:`${myPosition+1}. kare`, color:T.primary},
+        {emoji:"🔥", label:"En Uzun Seri", val:`${Math.max(...members.map(m=>m.streak))} gün`, color:"#F97316"},
+        {emoji:"⏳", label:"Kalan Kare", val:TOTAL-myPosition-1, color:"#A855F7"},
+      ].map((s,i)=>(
+        <div key={i} style={{ background:T.card, borderRadius:16, padding:"14px 12px", textAlign:"center", boxShadow:T.shadow, border:`2px solid ${s.color}22` }}>
+          <div style={{ fontSize:28, marginBottom:4 }}>{s.emoji}</div>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:20, color:s.color }}>{s.val}</div>
+          <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:T.muted, fontWeight:700, marginTop:2 }}>{s.label}</div>
+        </div>
+      ))}
+    </div>
+  </>;
+}
+
 // ── ANA EKRAN ─────────────────────────────────────────────────────────────────
 function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGlobalState, onSwitchUser, onNewSeason }) {
   const { positions, tasks, memberRights, memberDone, earnedBadges } = globalState;
@@ -1651,80 +1746,11 @@ function HomeScreen({ data, familyCode, activeUser, seasonNo, globalState, setGl
         )}
       </>}
 
-      {activeTab==="profile"&&(()=>{
-        const members = [
-          {emoji:parentAvatar?.emoji||"👩", name:data.name||"Ebeveyn", role:"Ebeveyn", key:"parent", totalDone:42, streak:7, badges:["🏆","⭐","🔥"]},
-          ...((data.children||[]).map((c,i)=>({emoji:AVATARS.find(a=>a.id===c.avatar)?.emoji||"👧", name:c.name, role:`${c.age} yas`, key:`child_${i}`, totalDone:[28,35,19][i]||24, streak:[5,9,3][i]||4, badges:[["🌟","📚"],["🚀","🎯"],["🌱"]][i]||["🌟"]}))),
-        ];
-        const sorted=[...members].sort((a,b)=>b.totalDone-a.totalDone);
-        const maxDone=sorted[0]?.totalDone||1;
-        const medals=["🥇","🥈","🥉","🎖️"];
-        const barColors=["linear-gradient(90deg,#FFD700,#FFA500)","linear-gradient(90deg,#C0C0C0,#A0A0A0)","linear-gradient(90deg,#CD7F32,#A0522D)","linear-gradient(90deg,#A855F7,#7C3AED)"];
-        return <>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:18, color:T.dark, marginBottom:4 }}>Skor Tablosu 🏆</div>
-          <p style={{ color:T.muted, fontSize:13, marginBottom:16 }}>Bu ay kim kaç görev tamamladı?</p>
-          {sorted.map((m,i)=>(
-            <div key={i} style={{ background:i===0?"linear-gradient(135deg,#fff8e1,#fff3cc)":T.card, borderRadius:18, padding:"14px 16px", marginBottom:10, border:`2px solid ${i===0?"#FFD700":"#E8DDD0"}`, boxShadow:T.shadow }}>
-              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
-                <div style={{ fontSize:28 }}>{medals[i]}</div>
-                <div style={{ fontSize:32 }}>{m.emoji}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:15, color:T.dark }}>{m.name}</div>
-                  <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted }}>{m.role}</div>
-                </div>
-                <div style={{ textAlign:"right" }}>
-                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:22, color:T.primary }}>{m.totalDone}</div>
-                  <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:T.muted, fontWeight:700 }}>GÖREV</div>
-                </div>
-              </div>
-              <div style={{ background:"#F0E8DC", borderRadius:99, height:8, overflow:"hidden", marginBottom:8 }}>
-                <div style={{ height:"100%", width:`${(m.totalDone/maxDone)*100}%`, background:barColors[i], borderRadius:99 }}/>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <div style={{ display:"flex", gap:4 }}>{m.badges.map((b,j)=><span key={j} style={{ fontSize:18 }}>{b}</span>)}</div>
-                <div style={{ background:"#FFF3E0", borderRadius:99, padding:"3px 10px", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:11, color:T.primary }}>🔥 {m.streak} günlük seri</div>
-              </div>
-            </div>
-          ))}
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, margin:"20px 0 12px" }}>⚙️ Ayarlar</div>
-          <div style={{ background:T.card, borderRadius:18, padding:"16px 18px", boxShadow:T.shadow, marginBottom:16 }}>
-            <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, color:T.dark, marginBottom:12 }}>İlerleme Yöntemi</div>
-            <div style={{ display:"flex", gap:10 }}>
-              {[
-                {id:"compass", emoji:"🧭", label:"Pusula"},
-                {id:"dice",    emoji:"🎲", label:"Zar"},
-              ].map(opt=>(
-                <div key={opt.id} onClick={()=>{
-                  if(activeUser?.ownerKey!=="parent") return;
-                  const updated = {...data, movement:opt.id};
-                  set(ref(db, `families/${familyCode}`), {...updated, familyCode});
-                }}
-                  style={{ flex:1, padding:"14px 8px", borderRadius:14, textAlign:"center", cursor:activeUser?.ownerKey==="parent"?"pointer":"not-allowed", background:data.movement===opt.id?T.primary:"#F0E8DC", border:`2px solid ${data.movement===opt.id?T.primary:"transparent"}`, opacity:activeUser?.ownerKey==="parent"?1:0.6 }}>
-                  <div style={{ fontSize:28 }}>{opt.emoji}</div>
-                  <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, color:data.movement===opt.id?"#fff":T.dark, marginTop:4 }}>{opt.label}</div>
-                  {data.movement===opt.id&&<div style={{ fontFamily:"'Nunito',sans-serif", fontSize:10, color:"rgba(255,255,255,0.8)", marginTop:2 }}>Aktif ✓</div>}
-                </div>
-              ))}
-            </div>
-            {activeUser?.ownerKey!=="parent"&&<p style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginTop:8, textAlign:"center" }}>Sadece ebeveyn degistirebilir</p>}
-          </div>
-          <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:16, color:T.dark, margin:"20px 0 12px" }}>Ay Özeti 📊</div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-            {[
-              {emoji:"✅", label:"Toplam Görev", val:members.reduce((s,m)=>s+m.totalDone,0), color:T.secondary},
-              {emoji:"📍", label:"Harita Konumum", val:`${myPosition+1}. kare`, color:T.primary},
-              {emoji:"🔥", label:"En Uzun Seri",  val:`${Math.max(...members.map(m=>m.streak))} gün`, color:"#F97316"},
-              {emoji:"⏳", label:"Kalan Kare",    val:TOTAL-myPosition-1, color:"#A855F7"},
-            ].map((s,i)=>(
-              <div key={i} style={{ background:T.card, borderRadius:16, padding:"14px 12px", textAlign:"center", boxShadow:T.shadow, border:`2px solid ${s.color}22` }}>
-                <div style={{ fontSize:28, marginBottom:4 }}>{s.emoji}</div>
-                <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:20, color:s.color }}>{s.val}</div>
-                <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:T.muted, fontWeight:700, marginTop:2 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </>;
-      })()}
+      {activeTab==="profile"&&<ProfileTab
+        data={data} activeUser={activeUser} familyCode={familyCode}
+        myPosition={myPosition} positions={positions}
+        parentAvatar={parentAvatar}
+      />}
     </div>
 
     {/* Bottom nav */}
