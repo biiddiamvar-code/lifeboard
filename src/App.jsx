@@ -172,105 +172,61 @@ function BackBtn({ onBack }) {
 const EMOJI_OPTIONS = ["🌟","🎈","🦁","🍕","🚀","🌈","🐶","🎮","🏆","🦋","🍦","⚽","🎵","🌸","🐱","🎯","🦄","🍎","🎨","🌙","🐸","🎲","🦊","🍩"];
 
 function EmojiPinPicker({ value, onChange, label }) {
-  const [open, setOpen] = useState(false);
-  const pin = value || [];
-
-  const pick = (e) => {
-    if(pin.length >= 4) return;
-    const next = [...pin, e];
-    onChange(next);
-    if(next.length === 4) setOpen(false);
-  };
-  const clear = () => onChange([]);
-
+  const selected = Array.isArray(value) ? value[0] : value;
   return <div style={{ marginBottom:20 }}>
-    <p style={{ fontFamily:"'Nunito',sans-serif", fontWeight:700, color:T.dark, marginBottom:10, fontSize:14 }}>{label}</p>
-    {/* Seçilen 4 emoji */}
-    <div style={{ display:"flex", gap:8, marginBottom:10 }}>
-      {[0,1,2,3].map(i=>(
-        <div key={i} style={{ width:56, height:56, borderRadius:14, background: pin[i] ? T.card : "#F0E8DC", border:`2px solid ${pin[i]?T.primary:"#E0D6CC"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, boxShadow:pin[i]?T.shadow:"none" }}>
-          {pin[i]||<span style={{color:"#D0C8BE",fontSize:18}}>?</span>}
+    <p style={{ fontFamily:"'Nunito',sans-serif", fontWeight:700, color:T.dark, marginBottom:6, fontSize:14 }}>{label}</p>
+    <p style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginBottom:10 }}>1 emoji seç  -  giriş sifren bu olacak</p>
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:8 }}>
+      {EMOJI_OPTIONS.map((e,i)=>(
+        <div key={i} onClick={()=>onChange(e)}
+          style={{ height:48, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, borderRadius:12, background:selected===e?"linear-gradient(135deg,#FF6B35,#FF8C42)":"#F5F0EA", cursor:"pointer", border:`2px solid ${selected===e?T.primary:"transparent"}`, transition:"all 0.15s" }}>
+          {e}
         </div>
       ))}
     </div>
-    <div style={{ display:"flex", gap:8 }}>
-      <button onClick={()=>setOpen(!open)} style={{ flex:1, padding:"10px", borderRadius:12, border:`2px solid ${T.primary}`, background:"transparent", color:T.primary, fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, cursor:"pointer" }}>
-        {pin.length<4 ? "Emoji Seç 👆" : "Degistir ✏️"}
-      </button>
-      {pin.length>0&&<button onClick={clear} style={{ padding:"10px 14px", borderRadius:12, border:"2px solid #E0D6CC", background:"#F0E8DC", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:13, cursor:"pointer", color:T.muted }}>Sıfırla</button>}
-    </div>
-    {open && (
-      <div style={{ background:T.card, borderRadius:16, padding:16, marginTop:10, boxShadow:T.shadow }}>
-        <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:12, color:T.muted, marginBottom:8 }}>4 emoji seç ({pin.length}/4)</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:6 }}>
-          {EMOJI_OPTIONS.map((e,i)=>(
-            <div key={i} onClick={()=>pick(e)}
-              style={{ height:44, display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, borderRadius:10, background:"#F5F0EA", cursor:pin.length>=4?"not-allowed":"pointer", opacity:pin.length>=4?0.5:1 }}>
-              {e}
-            </div>
-          ))}
-        </div>
-      </div>
-    )}
+    {selected && <div style={{ marginTop:8, textAlign:"center", fontFamily:"'Nunito',sans-serif", fontSize:13, color:T.muted }}>Seçilen: <span style={{ fontSize:22 }}>{selected}</span> ✓</div>}
   </div>;
 }
 
 // ── EMOJİ PIN GİRİŞ EKRANI ───────────────────────────────────────────────────
 function EmojiPinEntry({ member, onSuccess, onBack }) {
-  const [entered, setEntered] = useState([]);
   const [error, setError] = useState(false);
-  const correct = member.emojiPin || [];
+
+  // Pin yoksa direkt giriş
+  const rawPin = member.emojiPin;
+  const correct = Array.isArray(rawPin) ? rawPin[0] : rawPin;
+
+  useEffect(()=>{ if(!correct) onSuccess(); },[]);
+  if(!correct) return null;
 
   const pick = (e) => {
-    if(entered.length >= 4) return;
-    const next = [...entered, e];
-    setEntered(next);
-    if(next.length === 4) {
-      if(JSON.stringify(next) === JSON.stringify(correct)) {
-        setTimeout(()=>onSuccess(), 200);
-      } else {
-        setError(true);
-        setTimeout(()=>{ setEntered([]); setError(false); }, 800);
-      }
+    if(e === correct) {
+      onSuccess();
+    } else {
+      setError(true);
+      setTimeout(()=>setError(false), 800);
     }
   };
 
   return <div style={{ minHeight:"100vh", background:T.anatoliaBg, display:"flex", flexDirection:"column", justifyContent:"center", padding:"32px 22px" }}>
     <button onClick={onBack} style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", alignSelf:"flex-start", marginBottom:20 }}>←</button>
-    <div style={{ textAlign:"center", marginBottom:28 }}>
+    <div style={{ textAlign:"center", marginBottom:24 }}>
       <div style={{ fontSize:56, marginBottom:8 }}>{member.emoji}</div>
       <div style={{ fontFamily:"'Nunito',sans-serif", fontWeight:900, fontSize:24, color:T.dark }}>{member.name}</div>
-      <div style={{ color:T.muted, fontSize:14, marginTop:4 }}>Emoji sifrenizi girin</div>
+      <div style={{ color:T.muted, fontSize:14, marginTop:4 }}>Emoji sifrenizi seçin 🔒</div>
     </div>
-
-    {/* Girilen emojiler */}
-    <div style={{ display:"flex", gap:10, justifyContent:"center", marginBottom:24 }}>
-      {[0,1,2,3].map(i=>(
-        <div key={i} style={{ width:60, height:60, borderRadius:16, background: error?"#FEE2E2": entered[i]?T.card:"#F0E8DC", border:`2px solid ${error?"#DC2626":entered[i]?T.primary:"#E0D6CC"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, transition:"all 0.2s" }}>
-          {entered[i]||""}
-        </div>
-      ))}
-    </div>
-
     {error && <div style={{ textAlign:"center", color:"#DC2626", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, marginBottom:12 }}>Yanlis! Tekrar dene 🔒</div>}
-
-    {/* Emoji klavye */}
     <div style={{ background:T.card, borderRadius:20, padding:16, boxShadow:T.shadow }}>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:8 }}>
         {EMOJI_OPTIONS.map((e,i)=>(
           <div key={i} onClick={()=>pick(e)}
-            style={{ height:48, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, borderRadius:12, background:"#F5F0EA", cursor:"pointer", transition:"transform 0.1s" }}
-            onMouseDown={el=>el.currentTarget.style.transform="scale(0.9)"}
+            style={{ height:52, display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, borderRadius:12, background:error?"#FEE2E2":"#F5F0EA", cursor:"pointer", transition:"all 0.15s" }}
+            onMouseDown={el=>el.currentTarget.style.transform="scale(0.88)"}
             onMouseUp={el=>el.currentTarget.style.transform="scale(1)"}>
             {e}
           </div>
         ))}
       </div>
-      {entered.length>0 && (
-        <button onClick={()=>setEntered(entered.slice(0,-1))} style={{ width:"100%", marginTop:10, padding:"10px", borderRadius:12, border:"none", background:"#F0E8DC", fontFamily:"'Nunito',sans-serif", fontWeight:800, fontSize:14, color:T.muted, cursor:"pointer" }}>
-          ← Sil
-        </button>
-      )}
     </div>
   </div>;
 }
@@ -354,8 +310,8 @@ function ParentProfileScreen({ onNext, onBack, data, setData }) {
         </div>
       ))}
     </div>
-    <EmojiPinPicker value={data.emojiPin||[]} onChange={pin=>setData({...data, emojiPin:pin})} label="Emoji Sifreniz 🔒 (4 emoji seç)"/>
-    <Btn onClick={()=>onNext()} disabled={!data.name||!data.avatar||(data.emojiPin||[]).length<4}>Devam →</Btn>
+    <EmojiPinPicker value={data.emojiPin||[]} onChange={pin=>setData({...data, emojiPin:pin})} label="Emoji Sifreniz 🔒"/>
+    <Btn onClick={()=>onNext()} disabled={!data.name||!data.avatar||!data.emojiPin}>Devam →</Btn>
   </Screen>;
 }
 
@@ -406,7 +362,7 @@ function AddChildScreen({ onNext, onBack, data, setData }) {
           ))}
         </div>
         <EmojiPinPicker value={cp} onChange={setCp} label="Emoji Sifre 🔒"/>
-        <Btn variant="ghost" onClick={add} disabled={!cn||!ca||!cv||cp.length<4}>+ Çocuk Ekle</Btn>
+        <Btn variant="ghost" onClick={add} disabled={!cn||!ca||!cv||!cp}>+ Çocuk Ekle</Btn>
       </div>
     )}
     <Btn onClick={()=>onNext()}>Devam → {(data.children||[]).length===0 ? "(çocuksuz)" : ""}</Btn>
@@ -600,11 +556,11 @@ function UserSelectScreen({ data, familyCode, onSelect }) {
           <EmojiPinPicker value={p2pin} onChange={setP2pin} label="Emoji Sifre 🔒"/>
           <div style={{ display:"flex", gap:10 }}>
             <Btn onClick={()=>{
-              if(!p2name||!p2avatar||p2pin.length<4) return;
+              if(!p2name||!p2avatar||!p2pin) return;
               const p2 = {name:p2name, avatar:p2avatar, emojiPin:p2pin};
               set(ref(db, `families/${familyCode}`), {...data, parent2:p2, familyCode});
               onSelect({id:"parent2", emoji:AVATARS.find(a=>a.id===p2avatar)?.emoji||"👨", name:p2name, role:"Ebeveyn", ownerKey:"parent", emojiPin:p2pin});
-            }} disabled={!p2name||!p2avatar||p2pin.length<4} style={{ flex:2 }}>Katıl →</Btn>
+            }} disabled={!p2name||!p2avatar||!p2pin} style={{ flex:2 }}>Katıl →</Btn>
             <Btn variant="ghost" onClick={()=>setAddingParent(false)} style={{ flex:1 }}>İptal</Btn>
           </div>
         </div>
